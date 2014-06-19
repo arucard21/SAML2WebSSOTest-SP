@@ -26,12 +26,6 @@ import java.util.List;
  * @author: Riaas Mokiem
  */
 public abstract class BaseTestSuite {
-	/**
-	 * The possible values for defining how a sequence of login attempts should be evaluated
-	 */
-	public enum LOGINS_ATTEMPTS {
-		ALL, NONE, ONE, ONEORMORE;
-	}
 
 	/**
 	 * Get the IdP metadata that should be used in the mock IdP for this test suite.
@@ -95,47 +89,26 @@ public abstract class BaseTestSuite {
      * @return: a string containing the name of the SP Endpoint tag
      */
 	public abstract String get_SP_endpoint_tag();
-
-	/**
-	 * The Attribute class contains the values pertaining to a single attribute
-	 */
-	public class Attribute {
-
-		private String attributeName;
-		private String nameFormat;
-		private String attributeValue;
-		
-		public Attribute(String name, String format, String value){
-			attributeName = name;
-			nameFormat = format;
-			attributeValue = value;
-		}
-		
-		public String getAttributeName() {
-			return attributeName;
-		}
-
-		public String getNameFormat() {
-			return nameFormat;
-		}
-
-		public String getAttributeValue() {
-			return attributeValue;
-		}
-	}
 	
 	/**
-	 * The Attribute class contains the values pertaining to a single attribute
+	 * The LoginAttempt object can be used to define a login attempt at an SP
+	 * 
+	 * You must define the Response message that should be sent to the SP to see how the SP handles this.
 	 */
-	public abstract class LoginAttempt {
-		@SuppressWarnings("unused")
-		private String request = "";
-		@SuppressWarnings("unused")
-		private String binding = "";
+	public class LoginAttempt {
+
 		private boolean spInitiated;
+		private String response;
 		
-		public LoginAttempt(boolean spInitiated){
+		/**
+		 * Create the LoginAttempt object.
+		 * 
+		 * @param spInitiated specifies if the login attempt should be SP-initiated
+		 * @param response is the SAML Response message that the mock IdP should send to the SP 
+		 */
+		public LoginAttempt(boolean spInitiated, String response){
 			this.spInitiated = spInitiated;
+			this.response = response;
 		}
 		
 		/**
@@ -157,68 +130,81 @@ public abstract class BaseTestSuite {
 		 * 
 		 * @return a string containing the response message
 		 */
-		public abstract String getResponse();
-		
-		/**
-		 * Set the request message that was received from the SP during the login attempt.
-		 * This request message can be used when generating the response which the mock IdP will return to the SP. 
-		 * 
-		 * @param request is the request message that should be used for generating a response
-		 */
-		public void setRequest(String request){
-			this.request = request;
+		public String getResponse(){
+			return this.response;
 		}
-		
-		public void setBinding(String binding){
-			this.binding = binding;
-		}
+
 	}
 	/**
-	 * The base class for all test cases. Contains implemented, common methods and abstract methods that are required to be
-	 * implemented by all inheriting classes.
+	 * The base class for all test cases. Defines the variables and methods that are required for the test runner to correctly run
+	 * the test case.
+	 * 
+	 * In the test case you can define what should be checked in the SAML SP Metadata or in the SAML Request. You can also
+	 * provide LoginAttempt objects that specify the logins attempts that should be tested on the SP.  
 	 * 
 	 * @author RiaasM
 	 *
 	 */
-	public abstract class TestCase{
+	public abstract class BaseTestCase{
 		/**
 		 * The human-readable name of the test case
 		 */
-		public String testcase_name;
+		public String testcase_name = "";
 		/**
 		 * The description of the test case
 		 */
-		public String testcase_description;
+		public String testcase_description = "";
 		/**
-		 * The kind of error that should be given if the test case fails 
+		 * Specify if the metadata should be tested
 		 */
-		public int testcase_error_level;
+		public boolean testMetadata = false;
 		/**
-		 * Defines how the message exchanges should be evaluated.
+		 * Specify if the request should be tested
 		 */
-		public final LOGINS_ATTEMPTS TESTCASE_TEST_LOGINS_SUCCEEDED = LOGINS_ATTEMPTS.ALL;
+		public boolean testRequest = false;
+		/**
+		 * A list of the login attempts that should be tested on the SP
+		 */
+		public List<LoginAttempt> loginAttempts = null;
 
 		/**
-		 * Get the prerequisite tests for this test case. 
+		 * Create an instance of the test case. 
 		 * 
-		 * @return a List of Strings representing the prerequisite tests
+		 * @param tc_name is the name of the test case, intended to be shown in the test results
+		 * @param tc_descr is a description of the test case, intended to be shown in the test results
+		 * @param loginAttempts is a list of LoginAttempt objects representing all the logins that should be attempted on the SP (can be null) 
 		 */
-		public abstract List<String> getPrerequisites();
-	}
-	
-	/**
-	 * Test case for checking the metadata provided by the SP.
-	 * 
-	 * @author RiaasM
-	 *
-	 */
-	public abstract class MetadataTestCase extends TestCase {
-
-		@SuppressWarnings("unused")
-		private String metadata;
-
-		public MetadataTestCase(String metadata){
-			this.metadata = metadata;
+		public BaseTestCase(String tc_name, String tc_descr, List<LoginAttempt> loginAttempts){
+			testcase_name = tc_name;
+			testcase_description = tc_descr;
+			this.loginAttempts = loginAttempts;
+		}
+		
+		/**
+		 * Determine if the SP's Metadata should be tested.
+		 * 
+		 * @return true if the metadata should be tested.
+		 */
+		public boolean testMetadata(){
+			return testMetadata;
+		}
+		
+		/**
+		 * Determine if the SP's Request message should be tested.
+		 * 
+		 * @return true if the Request message should be tested.
+		 */
+		public boolean testRequest(){
+			return testRequest;
+		}
+		
+		/**
+		 * Determine if login attempts should be tested. This can only be done if login attempts have been defined.
+		 * 
+		 * @return true if login attempts should be tested
+		 */
+		public boolean testLogins(){
+			return (loginAttempts != null);
 		}
 		
 		/**
@@ -226,53 +212,30 @@ public abstract class BaseTestSuite {
 		 * 
 		 * @return a string representing the test result in JSON format
 		 */
-		public abstract String checkMetadata();
-	}
-
-	/**
-	 * Test case for checking the Request message provided by the SP for the binding used by that SP.
-	 * 
-	 * @author RiaasM
-	 *
-	 */
-	public abstract class RequestTestCase extends TestCase {
-
-		@SuppressWarnings("unused")
-		private String request = "";
-		@SuppressWarnings("unused")
-		private String binding = "";
-
-		public RequestTestCase(String request, String binding){
-			this.request = request;
-			this.binding = binding;
-		}
+		public abstract String checkMetadata(String metadata);
 		
 		/**
 		 * Check the provided request for the provided binding
 		 * 
 		 * @return a string representing the test result in JSON format
 		 */
-		public abstract String checkRequest();
-	}
-	
-	/**
-	 * Test case for testing the SP's response to certain Response messages.
-	 * 
-	 * @author RiaasM
-	 *
-	 */
-	public abstract class MessageTestCase extends TestCase {
-
-		@SuppressWarnings("unused")
-		private String metadata;
-		@SuppressWarnings("unused")
-		private List<Attribute> attributes;
-		@SuppressWarnings("unused")
-		private List<LoginAttempt> loginAttempts;
-
-		public MessageTestCase(String metadata, List<Attribute> attributes){
-			this.metadata = metadata;
-			this.attributes = attributes;
+		public abstract String checkRequest(String request, String binding);
+		
+		/**
+		 * Retrieve the list of login attempts that should be tested on the SP.
+		 * 
+		 * @return the list of login attempts that should be tested on the SP.
+		 */
+		public List<LoginAttempt> getLoginAttempts(){
+			return this.loginAttempts;
 		}
+		
+		/**
+		 * Check the results from your login attempts and return an appropriate test result.
+		 * 
+		 * @param loginResults is the list of results for each login attempt (true if successful, false otherwise)
+		 * @return a string representing the test result in JSON format
+		 */
+		public abstract String checkLoginResults(List<Boolean> loginResults);
 	}
 }
