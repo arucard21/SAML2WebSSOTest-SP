@@ -1,14 +1,14 @@
-package saml2_testframework_common;
+package saml2TestframeworkCommon;
 /**
  * The Attribute class contains the values pertaining to a single attribute
  */
-public class Attribute {
+public class SAMLAttribute {
 
 	private String attributeName;
 	private String nameFormat;
 	private String attributeValue;
 	
-	public Attribute(String name, String format, String value){
+	public SAMLAttribute(String name, String format, String value){
 		attributeName = name;
 		nameFormat = format;
 		attributeValue = value;
