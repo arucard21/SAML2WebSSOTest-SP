@@ -1,6 +1,6 @@
 package saml2TestframeworkCommon.standardNames;
 /**
- * Class contains the names for attributes used in SAML
+ * Class contains the names and common values for attributes used in SAML
  * 
  * @author RiaasM
  *
@@ -44,4 +44,8 @@ public class Attribute {
 	public static final String NAMEFORMAT = "NameFormat";
 	public static final String FRIENDLYNAME = "FriendlyName";
 	public static final String ASSERTIONCONSUMERSERVICEURL = "AssertionConsumerServiceURL";
+	
+	public static final String NAMEFORMAT_UNSPECIFIED= "urn:oasis:names:tc:SAML:2.0:attrname-format:unspecified";
+	public static final String NAMEFORMAT_URI= "urn:oasis:names:tc:SAML:2.0:attrname-format:uri";
+	public static final String NAMEFORMAT_BASIC= "urn:oasis:names:tc:SAML:2.0:attrname-format:basic";
 }

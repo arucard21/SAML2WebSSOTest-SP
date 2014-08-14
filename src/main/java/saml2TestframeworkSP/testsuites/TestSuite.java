@@ -2,11 +2,15 @@ package saml2TestframeworkSP.testsuites;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
+
+import org.w3c.dom.Document;
 
 import saml2TestframeworkCommon.TestStatus;
 import saml2TestframeworkSP.LoginAttempt;
@@ -31,6 +35,20 @@ import saml2TestframeworkSP.LoginAttempt;
 public abstract class TestSuite {
 
 	/**
+	 * Retrieve the protocol on which the mock IdP should be available
+	 * 
+	 * @return the protocol on which the mock IdP should be available
+	 */
+	public abstract String getMockIdPProtocol();
+		
+	/**
+	 * Retrieve the URL on which the mock IdP should be available
+	 * 
+	 * @return the URL on which the mock IdP should be available
+	 */
+	public abstract String getMockIdPHostname();
+
+	/**
 	 * Retrieve the port on which the mock IdP should be available
 	 * 
 	 * @return the port on which the mock IdP should be available
@@ -38,11 +56,11 @@ public abstract class TestSuite {
 	public abstract int getMockIdPPort();
 
 	/**
-	 * Retrieve the URL on which the mock IdP should be available
+	 * Retrieve the relative path on which the mock IdP should listen to SSO connections
 	 * 
-	 * @return the URL on which the mock IdP should be available
+	 * @return the the relative path on which the mock IdP listens to SSO connections
 	 */
-	public abstract String getMockIdPURL();
+	public abstract String getMockIdPSsoPath();
 
 	/**
 	 * Retrieves the EntityID for the mock IdP
@@ -51,6 +69,23 @@ public abstract class TestSuite {
 	 */
 	public abstract String getmockIdPEntityID();
 
+	public String getMockIdPURL(){
+		URL mockIdPURL = null;
+		try {
+			mockIdPURL = new URL(getMockIdPProtocol(), getMockIdPHostname(), getMockIdPPort(), getMockIdPSsoPath());
+		} catch (MalformedURLException e) {
+			System.err.println("The URL of the mock IdP was malformed");
+			e.printStackTrace();
+		}
+		
+		if(mockIdPURL != null){
+			return mockIdPURL.toString();
+		}
+		else{
+			return null;
+		}
+	}
+	
 	/**
 	 * Get the IdP metadata that should be used in the mock IdP for this test suite.
 	 * 
@@ -150,7 +185,7 @@ public abstract class TestSuite {
 		}
 		return key;
 	}
-
+	
     /**
 	 * The interface for all test cases. Defines the methods that are required for the test runner to correctly run
 	 * the test case.
@@ -192,7 +227,7 @@ public abstract class TestSuite {
 		 * 
 		 * @return the status of the test
 		 */
-		TestStatus checkMetadata(String metadata);
+		TestStatus checkMetadata(Document metadata);
 	}
 	
 	public interface RequestTestCase extends TestCase {

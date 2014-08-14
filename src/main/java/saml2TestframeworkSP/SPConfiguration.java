@@ -1,27 +1,12 @@
 package saml2TestframeworkSP;
 
-import java.io.IOException;
-import java.io.StringReader;
-import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.parsers.ParserConfigurationException;
-import javax.xml.transform.Transformer;
-import javax.xml.transform.TransformerException;
-import javax.xml.transform.TransformerFactory;
-import javax.xml.transform.dom.DOMSource;
-import javax.xml.transform.stream.StreamResult;
-
 import org.w3c.dom.Document;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
-import org.xml.sax.InputSource;
-import org.xml.sax.SAXException;
-
 import saml2TestframeworkCommon.SAMLAttribute;
 
 public class SPConfiguration {
@@ -40,9 +25,8 @@ public class SPConfiguration {
 	private int loginStatuscode;
 	/**
 	 * Contains the cookies that should be present when you are correctly logged in. 
-	 * If it is null (default value), the cookies will not be checked
 	 */
-	private HashMap<String, String> loginCookies;
+	private HashMap<String, String> loginCookies = new HashMap<String, String>();
 	/**
 	 * Contains a regex that should match the content of the page that is shown when you are correctly logged in. 
 	 * If it is null (default value), the content of the page will not be checked.
@@ -52,7 +36,7 @@ public class SPConfiguration {
 	 * Contains the attributes that the mock IdP should send along with its SAML Response.
 	 * The attributes should be valid for the target SP.
 	 */
-	private ArrayList<SAMLAttribute> attributes;
+	private ArrayList<SAMLAttribute> attributes = new ArrayList<SAMLAttribute>();
 	
 	/**
 	 * Add a single cookie to the list
@@ -84,44 +68,12 @@ public class SPConfiguration {
 		this.startPage = startPage;
 	}
 	
-	public String getMetadata() {
-		if(metadata != null){
-			String mdString = "";
-			try {
-				TransformerFactory tfac = TransformerFactory.newInstance();
-				Transformer transf = tfac.newTransformer();
-				StringWriter mdWriter = new StringWriter();
-				transf.transform(new DOMSource(metadata), new StreamResult(mdWriter));
-				mdString = mdWriter.toString();
-			} catch (TransformerException e) {
-				e.printStackTrace();
-				System.err.println("Could not transform metadata into string");
-			}
-			return mdString;
-		}
-		else{
-			return "";
-		}
+	public Document getMetadata() {
+		return metadata;
 	}
 	
-	public void setMetadata(String md) {
-		DocumentBuilderFactory dbfac = DocumentBuilderFactory.newInstance();
-		dbfac.setNamespaceAware(true);
-		try {
-			DocumentBuilder docbuilder = dbfac.newDocumentBuilder();
-			//read the metadata xml
-			metadata = docbuilder.parse(new InputSource(new StringReader(md)));
-			
-		} catch (ParserConfigurationException e) {
-			e.printStackTrace();
-		} catch (SAXException e) {
-			e.printStackTrace();
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-		finally {
-			metadata = null;
-		}
+	public void setMetadata(Document md) {
+		metadata = md;
 	}
 	public int getLoginStatuscode() {
 		return loginStatuscode;

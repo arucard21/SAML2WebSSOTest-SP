@@ -1,11 +1,12 @@
 package saml2TestframeworkCommon.standardNames;
 /**
- * Class contains the standard names of values used in SAML
+ * Class contains common, standard values used in SAML that are not specific to any single namespace
  * 
  * @author RiaasM
  *
  */
 public class SAMLValues {
+	public static final String SAML20_PROTOCOL = "urn:oasis:names:tc:SAML:2.0:protocol";
 	public static final String BINDING_SOAP = "urn:oasis:names:tc:SAML:2.0:bindings:SOAP";
 	public static final String BINDING_PAOS = "urn:oasis:names:tc:SAML:2.0:bindings:PAOS";
 	public static final String BINDING_HTTP_REDIRECT = "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect";

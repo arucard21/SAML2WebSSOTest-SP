@@ -2,7 +2,7 @@ package saml2TestframeworkSP.mockIdPHandlers;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.HashMap;
+
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
@@ -11,8 +11,6 @@ import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.server.HttpChannel;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.handler.AbstractHandler;
-import org.eclipse.jetty.util.MultiMap;
-
 import saml2TestframeworkCommon.SAMLUtil;
 import saml2TestframeworkCommon.standardNames.SAMLValues;
 import saml2TestframeworkSP.SPTestRunner;
@@ -33,34 +31,32 @@ public class SamlWebSSOHandler extends AbstractHandler{
 	public void handle(String target, Request baseRequest, HttpServletRequest abstractRequest, HttpServletResponse response) throws IOException, ServletException {
 		Request request = (abstractRequest instanceof Request) ? (Request) abstractRequest : HttpChannel.getCurrentHttpChannel().getRequest();
 		String method = request.getMethod();
-		MultiMap<String> urlArguments = request.getQueryParameters();
 
         if (method.equalsIgnoreCase("GET")) {
             // retrieve the SAML Request and binding
-            if (urlArguments.containsKey(SAMLValues.URLPARAM_SAMLREQUEST_REDIRECT)) {
+        	String reqParam = request.getParameter(SAMLValues.URLPARAM_SAMLREQUEST_REDIRECT);
+        	
+            if (reqParam != null) {
             	SPTestRunner.setSamlRequestBinding(SAMLValues.BINDING_HTTP_REDIRECT);
-                SPTestRunner.setSamlRequest(SAMLUtil.decodeSamlMessageForRedirect(urlArguments.getString("SAMLRequest"), SAMLValues.BINDING_HTTP_REDIRECT));
-                System.out.println("Retrieved SAML Request");
+                SPTestRunner.setSamlRequest(SAMLUtil.decodeSamlMessageForRedirect(reqParam));
+                // DEBUG logging
+                //System.out.println("Received SAML Request");
             }
-            else if (urlArguments.containsKey(SAMLValues.URLPARAM_SAMLARTIFACT)){
+            else if (request.getParameter(SAMLValues.URLPARAM_SAMLARTIFACT) != null){
             	SPTestRunner.setSamlRequestBinding(SAMLValues.BINDING_HTTP_ARTIFACT);
                 // TODO: implement for BINDING_HTTP_ARTIFACT
             }
         }
         else if (method.equalsIgnoreCase("POST")) {
             // get the POST variables
-        	HashMap<String, String[]> postVars = (HashMap<String, String[]>) request.getParameterMap();
+        	String reqParam = request.getParameter(SAMLValues.URLPARAM_SAMLREQUEST_POST);
             
-            if (postVars.containsKey(SAMLValues.URLPARAM_SAMLREQUEST_POST)){
+            if (reqParam != null){
             	SPTestRunner.setSamlRequestBinding(SAMLValues.BINDING_HTTP_POST);
-            	String[] samlRequestArray = postVars.get(SAMLValues.URLPARAM_SAMLREQUEST_POST);
-            	// there should be only one samlrequest parameter
-            	if (samlRequestArray.length == 1){
-            		SPTestRunner.setSamlRequest(SAMLUtil.decodeSamlMessageForRedirect(samlRequestArray[0], SAMLValues.BINDING_HTTP_POST));
-            	}
+            	SPTestRunner.setSamlRequest(SAMLUtil.decodeSamlMessageForPost(reqParam));
             		
             }
-            else if (postVars.containsKey(SAMLValues.URLPARAM_SAMLARTIFACT)){
+            else if (request.getParameter(SAMLValues.URLPARAM_SAMLARTIFACT) != null){
             	SPTestRunner.setSamlRequestBinding(SAMLValues.BINDING_HTTP_ARTIFACT);
                 // TODO: implement for BINDING_HTTP_ARTIFACT
             }

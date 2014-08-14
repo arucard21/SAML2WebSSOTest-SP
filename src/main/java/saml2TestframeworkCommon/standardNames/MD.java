@@ -8,13 +8,13 @@ package saml2TestframeworkCommon.standardNames;
 public class MD {
 	public static final String PREFIX = "md";
 	public static final String NAMESPACE = "urn:oasis:names:tc:SAML:2.0:metadata";
-	public static final String ENTITIESDESCRIPTOR = String.format("{%s}EntitiesDescriptor", NAMESPACE);
-	public static final String ENTITYDESCRIPTOR = String.format("{%s}EntityDescriptor", NAMESPACE);
-	public static final String ADDITIONALMETADATALOCATION = String.format("{%s}AdditionalMetadataLocation", NAMESPACE);
-	public static final String SPSSODESCRIPTOR = String.format("{%s}SPSSODescriptor", NAMESPACE);
-	public static final String IDPSSODESCRIPTOR = String.format("{%s}IDPSSODescriptor", NAMESPACE);
-	public static final String KEYDESCRIPTOR = String.format("{%s}KeyDescriptor", NAMESPACE);
-	public static final String SINGLESIGNONSERVICE = String.format("{%s}SingleSignOnService", NAMESPACE);
-	public static final String ARTIFACTRESOLUTIONSERVICE = String.format("{%s}ArtifactResolutionService", NAMESPACE);
-	public static final String ASSERTIONCONSUMERSERVICE = String.format("{%s}AssertionConsumerService", NAMESPACE);
+	public static final String ENTITIESDESCRIPTOR = "EntitiesDescriptor";
+	public static final String ENTITYDESCRIPTOR = "EntityDescriptor";
+	public static final String ADDITIONALMETADATALOCATION = "AdditionalMetadataLocation";
+	public static final String SPSSODESCRIPTOR = "SPSSODescriptor";
+	public static final String IDPSSODESCRIPTOR = "IDPSSODescriptor";
+	public static final String KEYDESCRIPTOR = "KeyDescriptor";
+	public static final String SINGLESIGNONSERVICE = "SingleSignOnService";
+	public static final String ARTIFACTRESOLUTIONSERVICE = "ArtifactResolutionService";
+	public static final String ASSERTIONCONSUMERSERVICE = "AssertionConsumerService";
 }
