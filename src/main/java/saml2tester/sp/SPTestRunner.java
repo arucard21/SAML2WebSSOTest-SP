@@ -1,8 +1,9 @@
-package saml2TestframeworkSP;
+package saml2tester.sp;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.lang.reflect.InvocationTargetException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -40,17 +41,18 @@ import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.handler.ContextHandler;
 import org.w3c.dom.Document;
 import org.w3c.dom.Node;
-import saml2TestframeworkCommon.SAMLUtil;
-import saml2TestframeworkCommon.TestStatus;
-import saml2TestframeworkCommon.standardNames.Attribute;
-import saml2TestframeworkCommon.standardNames.MD;
-import saml2TestframeworkCommon.standardNames.SAMLValues;
-import saml2TestframeworkSP.mockIdPHandlers.SamlWebSSOHandler;
-import saml2TestframeworkSP.testsuites.TestSuite;
-import saml2TestframeworkSP.testsuites.TestSuite.LoginTestCase;
-import saml2TestframeworkSP.testsuites.TestSuite.MetadataTestCase;
-import saml2TestframeworkSP.testsuites.TestSuite.RequestTestCase;
-import saml2TestframeworkSP.testsuites.TestSuite.TestCase;
+
+import saml2tester.common.SAMLUtil;
+import saml2tester.common.TestStatus;
+import saml2tester.common.standardNames.Attribute;
+import saml2tester.common.standardNames.MD;
+import saml2tester.common.standardNames.SAMLValues;
+import saml2tester.sp.mockIdPHandlers.SamlWebSSOHandler;
+import saml2tester.sp.testsuites.TestSuite;
+import saml2tester.sp.testsuites.TestSuite.LoginTestCase;
+import saml2tester.sp.testsuites.TestSuite.MetadataTestCase;
+import saml2tester.sp.testsuites.TestSuite.RequestTestCase;
+import saml2tester.sp.testsuites.TestSuite.TestCase;
 
 /**
  * This is the main class that is used to run the SP test. It will handle the
@@ -61,10 +63,9 @@ import saml2TestframeworkSP.testsuites.TestSuite.TestCase;
  */
 public class SPTestRunner {
 	/**
-	 * The package where all test suites can be found. Used as prefix for the
-	 * fully-qualified name
+	 * The package where all test suites can be found, relative to the package containing this class.
 	 */
-	private static String testSuitePackagePrefix = "saml2TestframeworkSP.testsuites.";
+	private static String testSuitesPackage = ".testsuites.";
 	/**
 	 * Define the keys used in the SP configuration properties file
 	 */
@@ -136,7 +137,7 @@ public class SPTestRunner {
 			if (command.hasOption("testsuite")) {
 				// load the test suite
 				String ts_string = command.getOptionValue("testsuite");
-				Class<?> ts_class = Class.forName(testSuitePackagePrefix + ts_string);
+				Class<?> ts_class = Class.forName(SPTestRunner.class.getPackage().getName() + testSuitesPackage + ts_string);
 				Object testsuiteObj = ts_class.newInstance();
 				if (testsuiteObj instanceof TestSuite) {
 					testsuite = (TestSuite) testsuiteObj;
@@ -250,7 +251,7 @@ public class SPTestRunner {
 	}
 
 	/**
-	 * Display the list of test suites in JSON format
+	 * Display the list of test suites
 	 * 
 	 * When new test suites are created, they need to be added here manually to
 	 * be listed though they can be used without being listed. (Doing this
@@ -269,10 +270,7 @@ public class SPTestRunner {
 	}
 
 	/**
-	 * Display the list of test cases in JSON format
-	 * 
-	 * @param tc_class_array
-	 *            is an array of test cases as Class objects
+	 * Display the list of test cases for the current test suite
 	 */
 	private static void listTestCases() {
 		// iterate through all test cases
@@ -281,6 +279,25 @@ public class SPTestRunner {
 			if (TestCase.class.isAssignableFrom(testcase)) {
 				// output the name of the test case
 				System.out.println(testcase.getSimpleName());
+				TestCase tc;
+				try {
+					tc = (TestCase) testcase.getConstructor(testsuite.getClass()).newInstance(testsuite);
+					// also output the description of the test case
+					System.out.println("\t" + tc.getDescription());
+				} catch (InstantiationException e) {
+					e.printStackTrace();
+				} catch (IllegalAccessException e) {
+					e.printStackTrace();
+				} catch (IllegalArgumentException e) {
+					e.printStackTrace();
+				} catch (InvocationTargetException e) {
+					e.printStackTrace();
+				} catch (NoSuchMethodException e) {
+					e.printStackTrace();
+				} catch (SecurityException e) {
+					e.printStackTrace();
+				}
+				System.out.println("");
 			} else {
 				System.err.println("Class was not a test case");
 			}
@@ -625,8 +642,7 @@ public class SPTestRunner {
 		// now just output to sysout
 		// if testcase is null, an error occurred before or after running the
 		// test.
-		for (Map.Entry<TestCase, TestStatus> testresult : testresults
-				.entrySet()) {
+		for (Map.Entry<TestCase, TestStatus> testresult : testresults.entrySet()) {
 			String name = testresult.getKey().getClass().getSimpleName();
 			//String description = testresult.getKey().getDescription();
 			String message;

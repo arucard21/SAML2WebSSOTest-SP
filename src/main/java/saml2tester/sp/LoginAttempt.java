@@ -1,4 +1,4 @@
-package saml2TestframeworkSP;
+package saml2tester.sp;
 /**
  * The LoginAttempt object can be used to define a login attempt at an SP
  * 

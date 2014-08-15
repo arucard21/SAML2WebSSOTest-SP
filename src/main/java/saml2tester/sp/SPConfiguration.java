@@ -1,4 +1,4 @@
-package saml2TestframeworkSP;
+package saml2tester.sp;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -7,7 +7,8 @@ import java.util.List;
 import org.w3c.dom.Document;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
-import saml2TestframeworkCommon.SAMLAttribute;
+
+import saml2tester.common.SAMLAttribute;
 
 public class SPConfiguration {
 	/**

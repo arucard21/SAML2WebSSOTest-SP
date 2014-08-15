@@ -1,4 +1,4 @@
-package saml2TestframeworkSP.testsuites;
+package saml2tester.sp.testsuites;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -12,8 +12,8 @@ import java.util.List;
 
 import org.w3c.dom.Document;
 
-import saml2TestframeworkCommon.TestStatus;
-import saml2TestframeworkSP.LoginAttempt;
+import saml2tester.common.TestStatus;
+import saml2tester.sp.LoginAttempt;
 
 /**
  * This is the module containing the abstract base classes that are required in every test suite, as well as any methods that 

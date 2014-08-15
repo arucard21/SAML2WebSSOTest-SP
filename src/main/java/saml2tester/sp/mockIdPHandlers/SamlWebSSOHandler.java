@@ -1,4 +1,4 @@
-package saml2TestframeworkSP.mockIdPHandlers;
+package saml2tester.sp.mockIdPHandlers;
 
 import java.io.IOException;
 import java.util.List;
@@ -11,9 +11,10 @@ import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.server.HttpChannel;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.handler.AbstractHandler;
-import saml2TestframeworkCommon.SAMLUtil;
-import saml2TestframeworkCommon.standardNames.SAMLValues;
-import saml2TestframeworkSP.SPTestRunner;
+
+import saml2tester.common.SAMLUtil;
+import saml2tester.common.standardNames.SAMLValues;
+import saml2tester.sp.SPTestRunner;
 
 public class SamlWebSSOHandler extends AbstractHandler{
 	

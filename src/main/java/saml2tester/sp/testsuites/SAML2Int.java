@@ -1,4 +1,4 @@
-package saml2TestframeworkSP.testsuites;
+package saml2tester.sp.testsuites;
 
 import org.opensaml.Configuration;
 import org.opensaml.DefaultBootstrap;
@@ -12,11 +12,11 @@ import org.w3c.dom.Document;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
-import saml2TestframeworkCommon.SAMLUtil;
-import saml2TestframeworkCommon.TestStatus;
-import saml2TestframeworkCommon.standardNames.Attribute;
-import saml2TestframeworkCommon.standardNames.MD;
-import saml2TestframeworkCommon.standardNames.SAMLValues;
+import saml2tester.common.SAMLUtil;
+import saml2tester.common.TestStatus;
+import saml2tester.common.standardNames.Attribute;
+import saml2tester.common.standardNames.MD;
+import saml2tester.common.standardNames.SAMLValues;
 
 
 public class SAML2Int extends TestSuite {
