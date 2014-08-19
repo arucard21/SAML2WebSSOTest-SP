@@ -9,6 +9,8 @@ import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
 import saml2tester.common.SAMLAttribute;
+import saml2tester.common.standardNames.Attribute;
+import saml2tester.common.standardNames.MD;
 
 public class SPConfiguration {
 	/**
@@ -102,35 +104,78 @@ public class SPConfiguration {
 	}
 	
 	/**
-	 * Retrieve all nodes with the requested tag name
+	 * Retrieve all nodes with the requested tag name from the metadata
 	 * 
 	 * @param tagName is the name of the requested nodes
 	 * @return a list of nodes with the requested tag name
 	 */
-	public List<Node> getTags(String tagName) {
+	public List<Node> getMDNodes(String tagName) {
 		ArrayList<Node> nodes = new ArrayList<Node>();
-		NodeList allACS = metadata.getElementsByTagName(tagName);
+		NodeList allNodes = metadata.getElementsByTagNameNS(MD.NAMESPACE, tagName);
 		//convert NodeList to List of Node objects
-		for (int i = 0; i < allACS.getLength(); i++){
-			nodes.add(allACS.item(i));
+		for (int i = 0; i < allNodes.getLength(); i++){
+			nodes.add(allNodes.item(i));
 		}
 		return nodes;
 	}
 	
 	/**
 	 * Retrieve the values of the requested attributes for the nodes with the requested tag name
+	 * from the metadata
 	 *  
 	 * @param tagName is the name of the requested nodes
 	 * @param attrName is the name of the attribute that should be present on the requested nodes
 	 * @return a list of the values of the requested attributes for the requested nodes
 	 */
-	public List<String> getAttributes(String tagName, String attrName) {
+	public List<String> getMDAttributes(String tagName, String attrName) {
 		ArrayList<String> resultAttributes = new ArrayList<String>();
-		NodeList allACS = metadata.getElementsByTagName(tagName);
+		NodeList allACS = metadata.getElementsByTagNameNS(MD.NAMESPACE, tagName);
 		for (int i = 0; i < allACS.getLength(); i++){
 			Node acs = allACS.item(i);
 			resultAttributes.add(acs.getAttributes().getNamedItem(attrName).getNodeValue());
 		}
 		return resultAttributes;
+	}
+	
+	/**
+	 * Retrieve the value of a single attribute for the node with the requested tag name from 
+	 * the metadata. 
+	 * 
+	 * If more than one attribute is found, this will return null. 
+	 * Use {@link #getMDAttributes(String, String)} instead.
+	 *  
+	 * @param tagName is the name of the requested nodes
+	 * @param attrName is the name of the attribute that should be present on the requested nodes
+	 * @return the value of the requested attribute, or null if none or multiple attributes were found
+	 */
+	public String getMDAttribute(String tagName, String attrName) {
+		List<String> allIDs = getMDAttributes(tagName, attrName);
+		if(allIDs.size() == 1){
+			return allIDs.get(0);
+		}
+		else {
+			return null;
+		}
+	}
+	
+	/**
+	 * Retrieve the location of the AssertionConsumerService for a specific
+	 * binding for the SP that is being tested from the metadata
+	 * 
+	 * @param binding specifies for which binding the location should be retrieved
+	 * @return the location for the requested binding or null if it is not found
+	 */
+	public String getMDACSLocation(String binding) {
+		ArrayList<Node> acsNodes = (ArrayList<Node>) getMDNodes(MD.ASSERTIONCONSUMERSERVICE);
+		// check all ACS nodes for the requested binding
+		for (Node acs : acsNodes) {
+			if (acs.getAttributes().getNamedItem(Attribute.BINDING)
+					.getNodeValue().equalsIgnoreCase(binding))
+				// return the location for the requested binding
+				return acs.getAttributes().getNamedItem(Attribute.LOCATION)
+						.getNodeValue();
+		}
+		// the requested binding could not be found
+		return null;
 	}
 }

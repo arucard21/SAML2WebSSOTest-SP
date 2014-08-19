@@ -9,11 +9,43 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
+import java.util.UUID;
 
+import org.joda.time.DateTime;
+import org.opensaml.Configuration;
+import org.opensaml.DefaultBootstrap;
+import org.opensaml.saml2.core.Assertion;
+import org.opensaml.saml2.core.AttributeStatement;
+import org.opensaml.saml2.core.AttributeValue;
+import org.opensaml.saml2.core.Audience;
+import org.opensaml.saml2.core.AudienceRestriction;
+import org.opensaml.saml2.core.AuthnContext;
+import org.opensaml.saml2.core.AuthnContextClassRef;
+import org.opensaml.saml2.core.AuthnStatement;
+import org.opensaml.saml2.core.Conditions;
+import org.opensaml.saml2.core.Issuer;
+import org.opensaml.saml2.core.Response;
+import org.opensaml.saml2.core.Status;
+import org.opensaml.saml2.core.StatusCode;
+import org.opensaml.saml2.core.Subject;
+import org.opensaml.saml2.core.SubjectConfirmation;
+import org.opensaml.saml2.core.SubjectConfirmationData;
+import org.opensaml.saml2.core.impl.AttributeBuilder;
+import org.opensaml.xml.ConfigurationException;
+import org.opensaml.xml.XMLObjectBuilderFactory;
+import org.opensaml.xml.schema.XSString;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
 
+import saml2tester.common.SAMLAttribute;
 import saml2tester.common.TestStatus;
+import saml2tester.common.standardNames.Attribute;
+import saml2tester.common.standardNames.MD;
+import saml2tester.common.standardNames.SAMLValues;
 import saml2tester.sp.LoginAttempt;
+import saml2tester.sp.SPConfiguration;
+import saml2tester.sp.SPTestRunner;
 
 /**
  * This is the module containing the abstract base classes that are required in every test suite, as well as any methods that 
@@ -33,6 +65,10 @@ import saml2tester.sp.LoginAttempt;
  * @author: Riaas Mokiem
  */
 public abstract class TestSuite {
+	/**
+	 * Logger for this class
+	 */
+	private final Logger logger = LoggerFactory.getLogger(SPTestRunner.class);
 
 	/**
 	 * Retrieve the protocol on which the mock IdP should be available
@@ -74,8 +110,7 @@ public abstract class TestSuite {
 		try {
 			mockIdPURL = new URL(getMockIdPProtocol(), getMockIdPHostname(), getMockIdPPort(), getMockIdPSsoPath());
 		} catch (MalformedURLException e) {
-			System.err.println("The URL of the mock IdP was malformed");
-			e.printStackTrace();
+			logger.error("The URL of the mock IdP was malformed", e);
 		}
 		
 		if(mockIdPURL != null){
@@ -115,7 +150,7 @@ public abstract class TestSuite {
 					cert += line + "\n";
 				}
 			} catch (IOException e) {
-				e.printStackTrace();
+				logger.error("IOException occurred while accessing the user-provided file for the mock IdP's X.509 Certificate", e);
 			}
 		}
 		else {
@@ -162,7 +197,7 @@ public abstract class TestSuite {
 					key += line + "\n";
 				}
 			} catch (IOException e) {
-				e.printStackTrace();
+				logger.error("IOException occurred while accessing the user-provided file for the mock IdP's private key", e);
 			}
 		}
 		else {
@@ -184,6 +219,119 @@ public abstract class TestSuite {
 					"-----END RSA PRIVATE KEY-----";
 		}
 		return key;
+	}
+	
+	/**
+	 * Create a minimal SAML Response.
+	 * 
+	 * This creates the minimal SAML Response that is valid for the Web SSO profile.
+	 * It will:
+	 * - generate random UUID-based ID's for the Assertion and Response
+	 * - use the AssertionConsumerService URL for the POST binding as Recipient
+	 * - use a validity period of 15 minutes from now
+	 * - use the bearer method for SubjectConfirmation
+	 * - set the AudienceRestriction to the SP Entity ID
+	 * - use the Password authentication context
+	 * - set all IssueInstant attributes to the current date and time
+	 * 
+	 * You can edit the Response as you see fit to customize it to your needs
+	 * 
+	 * @return the minimal SAML Response
+	 */
+	public Response createMinimalWebSSOResponse(){
+		SPConfiguration sp = SPTestRunner.getSPConfig();
+		try {
+			DefaultBootstrap.bootstrap();
+		} catch (ConfigurationException e) {
+			logger.error("Could not bootstrap OpenSAML", e);
+		}
+		XMLObjectBuilderFactory builderfac = Configuration.getBuilderFactory();
+		Response response = (Response) builderfac.getBuilder(Response.DEFAULT_ELEMENT_NAME).buildObject(Response.DEFAULT_ELEMENT_NAME);
+		Assertion assertion = (Assertion) builderfac.getBuilder(Assertion.DEFAULT_ELEMENT_NAME).buildObject(Assertion.DEFAULT_ELEMENT_NAME);
+		Issuer issuer = (Issuer) builderfac.getBuilder(Issuer.DEFAULT_ELEMENT_NAME).buildObject(Issuer.DEFAULT_ELEMENT_NAME);
+		Status status = (Status) builderfac.getBuilder(Status.DEFAULT_ELEMENT_NAME).buildObject(Status.DEFAULT_ELEMENT_NAME);
+		StatusCode statuscode = (StatusCode) builderfac.getBuilder(StatusCode.DEFAULT_ELEMENT_NAME).buildObject(StatusCode.DEFAULT_ELEMENT_NAME);
+		Subject subject = (Subject) builderfac.getBuilder(Subject.DEFAULT_ELEMENT_NAME).buildObject(Subject.DEFAULT_ELEMENT_NAME);
+		SubjectConfirmation subjectconf = (SubjectConfirmation) builderfac.getBuilder(SubjectConfirmation.DEFAULT_ELEMENT_NAME).buildObject(SubjectConfirmation.DEFAULT_ELEMENT_NAME);
+		SubjectConfirmationData subjectconfdata = (SubjectConfirmationData) builderfac.getBuilder(SubjectConfirmationData.DEFAULT_ELEMENT_NAME).buildObject(SubjectConfirmationData.DEFAULT_ELEMENT_NAME);
+		Conditions conditions = (Conditions) builderfac.getBuilder(Conditions.DEFAULT_ELEMENT_NAME).buildObject(Conditions.DEFAULT_ELEMENT_NAME);
+		AudienceRestriction audRes = (AudienceRestriction) builderfac.getBuilder(AudienceRestriction.DEFAULT_ELEMENT_NAME).buildObject(AudienceRestriction.DEFAULT_ELEMENT_NAME);
+		Audience aud = (Audience) builderfac.getBuilder(Audience.DEFAULT_ELEMENT_NAME).buildObject(Audience.DEFAULT_ELEMENT_NAME);
+		AuthnStatement authnstatement = (AuthnStatement) builderfac.getBuilder(AuthnStatement.DEFAULT_ELEMENT_NAME).buildObject(AuthnStatement.DEFAULT_ELEMENT_NAME);
+		AuthnContext authncontext = (AuthnContext) builderfac.getBuilder(AuthnContext.DEFAULT_ELEMENT_NAME).buildObject(AuthnContext.DEFAULT_ELEMENT_NAME);
+		AuthnContextClassRef authncontextclassref = (AuthnContextClassRef) builderfac.getBuilder(AuthnContextClassRef.DEFAULT_ELEMENT_NAME).buildObject(AuthnContextClassRef.DEFAULT_ELEMENT_NAME);
+
+		// create status for Response
+		statuscode.setValue(SAMLValues.STATUS_SUCCESS);
+		status.setStatusCode(statuscode);
+		// create Issuer for Assertion 
+		issuer.setValue(getmockIdPEntityID());
+		// create Subject for Assertion
+		subjectconfdata.setRecipient(sp.getMDACSLocation(SAMLValues.BINDING_HTTP_POST));
+		subjectconfdata.setNotOnOrAfter(DateTime.now().plusMinutes(15));
+		subjectconf.setSubjectConfirmationData(subjectconfdata);
+		subjectconf.setMethod(SAMLValues.CONFIRMATION_METHOD_BEARER);
+		subject.getSubjectConfirmations().add(subjectconf);
+		// create Conditions for Assertion
+		aud.setAudienceURI(sp.getMDAttribute(MD.ENTITYDESCRIPTOR, Attribute.ENTITYID));
+		audRes.getAudiences().add(aud);
+		conditions.getAudienceRestrictions().add(audRes);
+		// create AuthnStatement for Assertion
+		authncontextclassref.setAuthnContextClassRef(SAMLValues.AUTHNCONTEXT_PASSWORD);
+		authncontext.setAuthnContextClassRef(authncontextclassref);
+		authnstatement.setAuthnContext(authncontext);
+		authnstatement.setAuthnInstant(DateTime.now());
+		// add created elements to Assertion
+		assertion.setID("_"+UUID.randomUUID().toString());
+		assertion.setIssueInstant(DateTime.now());
+		assertion.setIssuer(issuer);
+		assertion.setSubject(subject);
+		assertion.setConditions(conditions);
+		assertion.getAuthnStatements().add(authnstatement);
+		
+		// add created elements to Response
+		response.setID("_"+UUID.randomUUID().toString());
+		response.setIssueInstant(DateTime.now());
+		response.getAssertions().add(assertion);
+		response.setStatus(status);
+		
+		return response;
+	}
+	
+	/**
+	 * Add the attributes configured for the target SP to the Assertion in an AttributeStatement
+	 */
+	public void addTargetSPAttributes(Assertion assertion){
+		SPConfiguration sp = SPTestRunner.getSPConfig();
+		
+		try {
+			DefaultBootstrap.bootstrap();
+		} catch (ConfigurationException e) {
+			logger.error("Could not bootstrap OpenSAML", e);
+		}
+		XMLObjectBuilderFactory builderfac = Configuration.getBuilderFactory();
+		// add attributes to the Response
+		AttributeStatement attrStat = (AttributeStatement) builderfac.getBuilder(AttributeStatement.DEFAULT_ELEMENT_NAME).buildObject(AttributeStatement.DEFAULT_ELEMENT_NAME);
+		AttributeBuilder attrbuilder = (AttributeBuilder) builderfac.getBuilder(org.opensaml.saml2.core.Attribute.DEFAULT_ELEMENT_NAME);
+		List<SAMLAttribute> attributes = sp.getAttributes();
+		// add all attributes that were configured for the target SP to the attribute statement
+		for (SAMLAttribute attr : attributes){
+			// build the attribute
+			org.opensaml.saml2.core.Attribute attribute = attrbuilder.buildObject();
+			// set the name to the attribute name that was configured for the target SP
+			attribute.setName(attr.getAttributeName());
+			// same for the nameformat
+			attribute.setNameFormat(attr.getNameFormat());
+			// create the AttributeValue node, which is the same as xs:any but with the AttributeValue tag name
+			XSString attrval = (XSString) builderfac.getBuilder(XSString.TYPE_NAME).buildObject(AttributeValue.DEFAULT_ELEMENT_NAME, XSString.TYPE_NAME);
+			// set the value of the AttributeValue
+			attrval.setValue(attr.getAttributeValue());
+			// add the AttributeValue to the Attribute
+			attribute.getAttributeValues().add(attrval);
+			// add the Attribute to the AttributeStatement
+			attrStat.getAttributes().add(attribute);
+		}
+		assertion.getAttributeStatements().add(attrStat);
 	}
 	
     /**
@@ -245,6 +393,13 @@ public abstract class TestSuite {
 		/**
 		 * Retrieve the list of login attempts that should be tested on the SP.
 		 * 
+		 * You should create a class that implements the LoginAttempt interface
+		 * for each login attempt you wish to test. In that class, you should specify
+		 * the SAML Response in the getResponse() method body. This method is provided
+		 * with the SAML Request, which you can use to build your Response. You should
+		 * then add a new instance of this class to a list and return that list. 
+		 * 
+		 * @param request is the SAML Request
 		 * @return the list of login attempts that should be tested on the SP.
 		 */
 		List<LoginAttempt> getLoginAttempts();

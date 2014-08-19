@@ -1,13 +1,22 @@
 package saml2tester.sp.testsuites;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
 import org.opensaml.Configuration;
 import org.opensaml.DefaultBootstrap;
-import org.opensaml.common.SAMLObjectBuilder;
+import org.opensaml.saml2.core.Assertion;
+import org.opensaml.saml2.core.NameID;
+import org.opensaml.saml2.core.Response;
+import org.opensaml.saml2.core.SubjectConfirmation;
 import org.opensaml.saml2.metadata.EntityDescriptor;
 import org.opensaml.saml2.metadata.IDPSSODescriptor;
 import org.opensaml.saml2.metadata.SingleSignOnService;
 import org.opensaml.xml.ConfigurationException;
 import org.opensaml.xml.XMLObjectBuilderFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
@@ -17,10 +26,16 @@ import saml2tester.common.TestStatus;
 import saml2tester.common.standardNames.Attribute;
 import saml2tester.common.standardNames.MD;
 import saml2tester.common.standardNames.SAMLValues;
+import saml2tester.sp.LoginAttempt;
+import saml2tester.sp.SPTestRunner;
 
 
 public class SAML2Int extends TestSuite {
-
+	/**
+	 * Logger for this class
+	 */
+	private final Logger logger = LoggerFactory.getLogger(SPTestRunner.class);
+	
 	@Override
 	public String getMockIdPProtocol() {
 		return "http";
@@ -51,20 +66,12 @@ public class SAML2Int extends TestSuite {
 		try {
 			DefaultBootstrap.bootstrap();
 		} catch (ConfigurationException e) {
-			e.printStackTrace();
+			logger.error("Could not bootstrap OpenSAML", e);
 		}
-		XMLObjectBuilderFactory xmlbuilderfac = Configuration.getBuilderFactory();
-		
-		@SuppressWarnings("unchecked")
-		SAMLObjectBuilder<EntityDescriptor> edBuilder = (SAMLObjectBuilder<EntityDescriptor>) xmlbuilderfac.getBuilder(EntityDescriptor.DEFAULT_ELEMENT_NAME);
-		@SuppressWarnings("unchecked")
-		SAMLObjectBuilder<IDPSSODescriptor> idpssodBuilder = (SAMLObjectBuilder<IDPSSODescriptor>) xmlbuilderfac.getBuilder(IDPSSODescriptor.DEFAULT_ELEMENT_NAME);
-		@SuppressWarnings("unchecked")
-		SAMLObjectBuilder<SingleSignOnService> ssosBuilder = (SAMLObjectBuilder<SingleSignOnService>) xmlbuilderfac.getBuilder(SingleSignOnService.DEFAULT_ELEMENT_NAME);
-		
-		EntityDescriptor ed = edBuilder.buildObject();
-		IDPSSODescriptor idpssod = idpssodBuilder.buildObject();
-		SingleSignOnService ssos = ssosBuilder.buildObject();
+		XMLObjectBuilderFactory xmlbuilderfac = Configuration.getBuilderFactory();		
+		EntityDescriptor ed = (EntityDescriptor) xmlbuilderfac.getBuilder(EntityDescriptor.DEFAULT_ELEMENT_NAME).buildObject(EntityDescriptor.DEFAULT_ELEMENT_NAME);
+		IDPSSODescriptor idpssod = (IDPSSODescriptor) xmlbuilderfac.getBuilder(IDPSSODescriptor.DEFAULT_ELEMENT_NAME).buildObject(IDPSSODescriptor.DEFAULT_ELEMENT_NAME);
+		SingleSignOnService ssos = (SingleSignOnService) xmlbuilderfac.getBuilder(SingleSignOnService.DEFAULT_ELEMENT_NAME).buildObject(SingleSignOnService.DEFAULT_ELEMENT_NAME);
 		
 		ssos.setBinding(SAMLValues.BINDING_HTTP_REDIRECT);
 		ssos.setLocation(getMockIdPURL());
@@ -111,8 +118,6 @@ public class SAML2Int extends TestSuite {
 				String curNS = metadata.getDocumentElement().getNamespaceURI();
 				// check if the provided document is indeed SAML Metadata (or at least uses the SAML Metadata namespace)
 				if(curNS != null && curNS.equalsIgnoreCase(MD.NAMESPACE)){
-					// DEBUG: show actual metadata
-					//System.out.println(toXML(metadata));
 					return TestStatus.OK;
 				}
 				else{
@@ -279,16 +284,143 @@ public class SAML2Int extends TestSuite {
 		}
 	}
 
-/**
- * 
- * TODO implement tests for specification sections below
- * 
- * 
- * 
- * Tests the following part of the following part of the SAML2Int Profile: 
- * 		Service Providers, if they rely at all on particular name identifier formats, MUST support one of the following:
- * 			urn:oasis:names:tc:SAML:2.0:nameid-format:persistent
- * 			urn:oasis:names:tc:SAML:2.0:nameid-format:transient
- * 
- **/
+	/**
+	 * Tests the following part of the following part of the SAML2Int Profile: 
+	 * Service Providers, if they rely at all on particular name identifier formats, MUST support one of the following:
+	 * 		urn:oasis:names:tc:SAML:2.0:nameid-format:persistent
+	 * 		urn:oasis:names:tc:SAML:2.0:nameid-format:transient
+	 * 
+	 * @author RiaasM
+	 */
+	public class LoginTransientPersistent implements LoginTestCase{
+		private String failedMessage;
+		private String successMessage;
+
+		@Override
+		public String getDescription() {
+			return "The Service Provider must allow logging in with either the persistent or transient name identifier format";
+		}
+
+		@Override
+		public String getSuccessMessage() {
+			return successMessage;
+		}
+
+		@Override
+		public String getFailedMessage() {
+			return failedMessage;
+		}
+
+		@Override
+		public List<LoginAttempt> getLoginAttempts() {
+			ArrayList<LoginAttempt> attempts = new ArrayList<LoginAttempt>();
+		
+			// create the classes that will contain the login attempts and SAML Responses
+			class LoginAttemptTransient implements LoginAttempt{
+
+				@Override
+				public boolean isSPInitiated() {
+					return true;
+				}
+				
+				@Override
+				public String getResponse(String request) {
+					// retrieve the request ID from the request
+					String requestID = SAMLUtil.getSamlMessageID(request);
+					
+					// create the minimally required Response
+					Response responseTransient = createMinimalWebSSOResponse();
+					// add attributes and sign the assertions in the response
+					List<Assertion> assertions = responseTransient.getAssertions();
+					for (Assertion assertion : assertions){
+						// create nameid with transient format
+						NameID nameid = (NameID) Configuration.getBuilderFactory().getBuilder(NameID.DEFAULT_ELEMENT_NAME).buildObject(NameID.DEFAULT_ELEMENT_NAME);
+						nameid.setValue("_"+UUID.randomUUID().toString());
+						nameid.setFormat(SAMLValues.NAMEID_FORMAT_TRANSIENT);
+						assertion.getSubject().setNameID(nameid);
+
+						// set the InReplyTo attribute on the subjectconfirmationdata of all subjectconfirmations
+						List<SubjectConfirmation> subconfs = assertion.getSubject().getSubjectConfirmations();
+						for (SubjectConfirmation subconf : subconfs){
+							subconf.getSubjectConfirmationData().setInResponseTo(requestID);
+						}
+						// add the attributes
+						addTargetSPAttributes(assertion);
+						SAMLUtil.sign(assertion, getIdPPrivateKey(null), getIdPCertificate(null));
+					}
+					// add the InReplyTo attribute to the Response as well
+					responseTransient.setInResponseTo(requestID);
+
+					return SAMLUtil.toXML(responseTransient);
+				}
+			}
+			
+			class LoginAttemptPersistent implements LoginAttempt{
+
+				@Override
+				public boolean isSPInitiated() {
+					return true;
+				}
+				
+				@Override
+				public String getResponse(String request) {
+					// retrieve the request ID from the request
+					String requestID = SAMLUtil.getSamlMessageID(request);
+					
+					// create the minimally required Response
+					Response responseTransient = createMinimalWebSSOResponse();
+					// add attributes and sign the assertions in the response
+					List<Assertion> assertions = responseTransient.getAssertions();
+					for (Assertion assertion : assertions){
+						// create nameid with persistent format
+						NameID nameid = (NameID) Configuration.getBuilderFactory().getBuilder(NameID.DEFAULT_ELEMENT_NAME).buildObject(NameID.DEFAULT_ELEMENT_NAME);
+						nameid.setValue("_"+UUID.randomUUID().toString());
+						nameid.setFormat(SAMLValues.NAMEID_FORMAT_PERSISTENT);
+						assertion.getSubject().setNameID(nameid);
+
+						// set the InReplyTo attribute on the subjectconfirmationdata of all subjectconfirmations
+						List<SubjectConfirmation> subconfs = assertion.getSubject().getSubjectConfirmations();
+						for (SubjectConfirmation subconf : subconfs){
+							subconf.getSubjectConfirmationData().setInResponseTo(requestID);
+						}
+						// add the attributes
+						addTargetSPAttributes(assertion);
+						SAMLUtil.sign(assertion, getIdPPrivateKey(null), getIdPCertificate(null));
+					}
+					// add the InReplyTo attribute to the Response as well
+					responseTransient.setInResponseTo(requestID);
+
+					return SAMLUtil.toXML(responseTransient);
+				}
+			}
+			attempts.add(new LoginAttemptTransient());
+			attempts.add(new LoginAttemptPersistent());
+			return attempts;
+		}
+
+		@Override
+		public TestStatus checkLoginResults(List<Boolean> loginResults) {
+			// the results should come back in the same order as they were provided, so we can check which login attempts succeeded
+			if (loginResults.get(0).booleanValue()){	
+				if (loginResults.get(1).booleanValue()){
+					successMessage = "The Service Provider could log in with both transient and persistent name identifier format";
+					return TestStatus.OK;
+				}
+				else{
+					successMessage = "The Service Provider could log in with transient name identifier format";
+					return TestStatus.OK;
+				}
+			}
+			else{
+				if (loginResults.get(1).booleanValue()){
+					successMessage = "The Service Provider could log in with persistent name identifier format";
+					return TestStatus.OK;
+				}
+				else{
+					failedMessage = "The Service Provider could not log in with either transient or persistent name identifier format";
+					return TestStatus.ERROR;
+				}
+			}
+		}
+	}
 }
