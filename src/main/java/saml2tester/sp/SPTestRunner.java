@@ -68,6 +68,7 @@ public class SPTestRunner {
 	 * Logger for this class
 	 */
 	private static final Logger logger = LoggerFactory.getLogger(SPTestRunner.class);
+	private static final String logFile = "slf4j.properties";
 	/**
 	 * The package where all test suites can be found, relative to the package containing this class.
 	 */
@@ -78,6 +79,7 @@ public class SPTestRunner {
 	private static String configStartPage = "targetSP.startPage";
 	private static String configMetadata = "targetSP.metadata";
 	private static String configLoginStatuscode = "targetSP.login.httpstatuscode";
+	private static String configLoginURL = "targetSP.login.url";
 	private static String configLoginCookiePrefix = "targetSP.login.cookie";
 	private static String configLoginContent = "targetSP.login.content";
 	private static String configIdPAttributePrefix = "targetSP.idp.attribute";
@@ -100,7 +102,7 @@ public class SPTestRunner {
 	/**
 	 * Contains the mock IdP server
 	 */
-	private static Server mockIdP = new Server();
+	private static Server mockIdP;
 	
 	/**
 	 * Contains the command-line options
@@ -108,10 +110,9 @@ public class SPTestRunner {
 	private static CommandLine command;
 
 	public static void main(String[] args) {
-		// initialize logging
-		String logConfig = "slf4j.properties";
-		if(Files.exists(Paths.get(logConfig))){
-			PropertyConfigurator.configure(logConfig);
+		// initialize logging with properties file if it exists, basic config otherwise
+		if(Files.exists(Paths.get(logFile))){
+			PropertyConfigurator.configure(logFile);
 		}
 		else{
 			BasicConfigurator.configure();
@@ -253,7 +254,7 @@ public class SPTestRunner {
 		} catch (SecurityException e) {
 			logger.error("Could not retrieve the constructor of the test case class", e);
 		} catch (Exception e) {
-			logger.error("The mock IdP could not be started", e);
+			logger.error("The test(s) could not be run", e);
 		} finally {
 			// stop the mock IdP
 			try {
@@ -361,6 +362,9 @@ public class SPTestRunner {
 				}
 				else if (key.equalsIgnoreCase(configLoginContent)){
 					spConfig.setLoginContent(propConfig.getProperty(configLoginContent));
+				}
+				else if (key.equalsIgnoreCase(configLoginURL)){
+					spConfig.setLoginURL(propConfig.getProperty(configLoginURL));
 				}
 				else if (key.startsWith(configLoginCookiePrefix)) {
 					String cookieProp = propConfig.getProperty(key);
@@ -510,17 +514,35 @@ public class SPTestRunner {
 					HttpResponse response = userAgent.execute(reqBldr.build(), session);
 
 					boolean statuscodeMatch = false;
+					boolean urlMatch = false;
 					boolean contentMatch = false;
 					boolean cookiesMatch = false;
 
-					// check the HTTP Status code of the page to see if the
-					// login was successful
+					// check the HTTP Status code of the page to see if the login was successful
 					if (spConfig.getLoginStatuscode() == 0) {
 						// do not match against status code
 						statuscodeMatch = true;
-					} else if (response.getStatusLine().getStatusCode() == spConfig
-							.getLoginStatuscode()) {
+					} else if (response.getStatusLine().getStatusCode() == spConfig.getLoginStatuscode()) {
 						statuscodeMatch = true;
+					}
+					
+					// check the URL of the page to see if the login was successful
+					if (spConfig.getLoginURL() == null) {
+						// do not match against url
+						urlMatch = true;
+					} 
+					else {
+						List<URI> locations = session.getRedirectLocations();
+						String currentLocation;
+						// if no redirects were found so current URL is the one we sent our request to
+						if(locations.isEmpty())
+							currentLocation = reqBldr.getUri().toString();
+						else
+							currentLocation = locations.get(locations.size()-1).toString();
+						// check if the current location matches what we expect when we are correctly logged in 
+						if (currentLocation.matches(spConfig.getLoginURL())) {
+							urlMatch = true;
+						}
 					}
 
 					// retrieve the page content from the response
@@ -588,7 +610,7 @@ public class SPTestRunner {
 						}
 					}
 					// the login succeeded when all configured matches are found
-					if (statuscodeMatch && contentMatch && cookiesMatch) {
+					if (statuscodeMatch && urlMatch && contentMatch && cookiesMatch) {
 						testResults.add(new Boolean(true));
 					}
 					else{
@@ -622,10 +644,8 @@ public class SPTestRunner {
 	 *            is the result of the test case that was run
 	 */
 	private static void outputTestResult(Map<TestCase, TestStatus> testresults) {
-		// TODO maybe use a templating system to output nicely at some point,
-		// now just output to sysout
-		// if testcase is null, an error occurred before or after running the
-		// test.
+		// TODO maybe use a templating system to output nicely at some point, now just output to sysout
+		// if testcase is null, an error occurred before or after running the test.
 		for (Map.Entry<TestCase, TestStatus> testresult : testresults.entrySet()) {
 			String name = testresult.getKey().getClass().getSimpleName();
 			//String description = testresult.getKey().getDescription();

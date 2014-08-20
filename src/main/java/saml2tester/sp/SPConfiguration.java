@@ -27,6 +27,10 @@ public class SPConfiguration {
 	 */
 	private int loginStatuscode;
 	/**
+	 * Contains the URL that should be reached when you are correctly logged in. 
+	 */
+	private String loginURL;
+	/**
 	 * Contains the cookies that should be present when you are correctly logged in. 
 	 */
 	private HashMap<String, String> loginCookies = new HashMap<String, String>();
@@ -83,6 +87,12 @@ public class SPConfiguration {
 	}
 	public void setLoginStatuscode(int loginStatuscode) {
 		this.loginStatuscode = loginStatuscode;
+	}
+	public String getLoginURL() {
+		return loginURL;
+	}
+	public void setLoginURL(String loginURL) {
+		this.loginURL = loginURL;
 	}
 	public HashMap<String, String> getLoginCookies() {
 		return loginCookies;
