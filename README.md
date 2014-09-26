@@ -1,4 +1,4 @@
-SAML2_SPTester
+SAML2Tester-SP
 ============
 
 Framework for testing the Web SSO profile of SAML 2.0 SP entities, written in Java.
