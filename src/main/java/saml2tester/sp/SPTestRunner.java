@@ -1,21 +1,18 @@
 package saml2tester.sp;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.lang.reflect.InvocationTargetException;
 import java.net.InetSocketAddress;
+import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.nio.charset.Charset;
+import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.Properties;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -26,18 +23,8 @@ import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
-import org.apache.http.HttpResponse;
 import org.apache.http.client.ClientProtocolException;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.client.methods.HttpUriRequest;
-import org.apache.http.client.methods.RequestBuilder;
-import org.apache.http.client.protocol.HttpClientContext;
 import org.apache.http.client.utils.URIBuilder;
-import org.apache.http.conn.ssl.AllowAllHostnameVerifier;
-import org.apache.http.cookie.Cookie;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClientBuilder;
-import org.apache.http.impl.client.HttpClients;
 import org.apache.log4j.BasicConfigurator;
 import org.apache.log4j.PropertyConfigurator;
 import org.eclipse.jetty.server.Server;
@@ -46,6 +33,22 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
 
+import com.gargoylesoftware.htmlunit.ElementNotFoundException;
+import com.gargoylesoftware.htmlunit.FailingHttpStatusCodeException;
+import com.gargoylesoftware.htmlunit.HttpMethod;
+import com.gargoylesoftware.htmlunit.Page;
+import com.gargoylesoftware.htmlunit.WebClient;
+import com.gargoylesoftware.htmlunit.WebRequest;
+import com.gargoylesoftware.htmlunit.html.HtmlAnchor;
+import com.gargoylesoftware.htmlunit.html.HtmlForm;
+import com.gargoylesoftware.htmlunit.html.HtmlInput;
+import com.gargoylesoftware.htmlunit.html.HtmlPage;
+import com.gargoylesoftware.htmlunit.html.HtmlSubmitInput;
+import com.gargoylesoftware.htmlunit.util.Cookie;
+import com.gargoylesoftware.htmlunit.util.NameValuePair;
+
+import saml2tester.common.FormInteraction;
+import saml2tester.common.LinkInteraction;
 import saml2tester.common.SAMLUtil;
 import saml2tester.common.TestStatus;
 import saml2tester.common.standardNames.SAMLValues;
@@ -74,16 +77,6 @@ public class SPTestRunner {
 	 */
 	private static String testSuitesPackage = ".testsuites.";
 	/**
-	 * Define the keys used in the SP configuration properties file
-	 */
-	private static String configStartPage = "targetSP.startPage";
-	private static String configMetadata = "targetSP.metadata";
-	private static String configLoginStatuscode = "targetSP.login.httpstatuscode";
-	private static String configLoginURL = "targetSP.login.url";
-	private static String configLoginCookiePrefix = "targetSP.login.cookie";
-	private static String configLoginContent = "targetSP.login.content";
-	private static String configIdPAttributePrefix = "targetSP.idp.attribute";
-	/**
 	 * The test suite that is being run
 	 */
 	private static TestSuite testsuite;
@@ -103,13 +96,17 @@ public class SPTestRunner {
 	 * Contains the mock IdP server
 	 */
 	private static Server mockIdP;
+	/**
+	 * The browser which will be used to connect to the SP
+	 */
+	private static final WebClient browser = new WebClient();
 	
 	/**
 	 * Contains the command-line options
 	 */
 	private static CommandLine command;
 
-	public static void main(String[] args) {
+	public static void main(String[] args) {		
 		// initialize logging with properties file if it exists, basic config otherwise
 		if(Files.exists(Paths.get(logFile))){
 			PropertyConfigurator.configure(logFile);
@@ -172,10 +169,10 @@ public class SPTestRunner {
 
 					// load target SP config
 					if (command.hasOption("spconfig")) {
-						loadConfig(command.getOptionValue("spconfig"));
+						spConfig = new SPConfiguration(command.getOptionValue("spconfig"));
 					} else {
 						// use default, empty SP configuration
-						spConfig = new SPConfiguration();
+						spConfig = new SPConfiguration(null);
 					}
 
 					// create the mock IdP and add all required handlers
@@ -213,13 +210,8 @@ public class SPTestRunner {
 						// classes that are not subclasses of TestCase
 						Class<?>[] allTCs = ts_class.getDeclaredClasses();
 						for (Class<?> testcaseClass : allTCs) {
-							Object curTestcaseObj = testcaseClass.getConstructor(testsuite.getClass()).newInstance(testsuite);
-							if (curTestcaseObj instanceof TestCase) {
-								TestCase curTestcase = (TestCase) curTestcaseObj;
+							TestCase curTestcase = (TestCase) testcaseClass.getConstructor(testsuite.getClass()).newInstance(testsuite);
 								testresults.put(curTestcase,runTest(curTestcase));
-							} else {
-								logger.error("Provided class was not a subclass of interface TestCase");
-							}
 						}
 					}
 					// handle test result(s)
@@ -332,78 +324,6 @@ public class SPTestRunner {
 	}
 
 	/**
-	 * Load the configuration of the target SP, provided in JSON format
-	 * 
-	 * @param targetSPConfig
-	 *            is the configuration of the target SP in JSON format
-	 */
-	private static void loadConfig(String targetSPConfig) {
-		spConfig = new SPConfiguration();
-
-		try {
-			Properties propConfig = new Properties();
-			propConfig.load(Files.newBufferedReader(Paths.get(targetSPConfig),Charset.defaultCharset()));
-			Set<String> configKeys = propConfig.stringPropertyNames();
-
-			for (String key : configKeys) {
-				// add the properties to the config object appropriately
-				if (key.equalsIgnoreCase(configStartPage)){
-					spConfig.setStartPage(propConfig.getProperty(configStartPage));
-				}
-				else if (key.equalsIgnoreCase(configMetadata)) {
-					String mdVal = propConfig.getProperty(configMetadata);
-					spConfig.setMetadata(SAMLUtil.fromXML(mdVal));
-				} 
-				else if (key.equalsIgnoreCase(configLoginStatuscode)){
-					String scProp = propConfig.getProperty(configLoginStatuscode);
-					if(scProp != null && !scProp.isEmpty()){
-						spConfig.setLoginStatuscode(Integer.valueOf(scProp));
-					}
-				}
-				else if (key.equalsIgnoreCase(configLoginContent)){
-					spConfig.setLoginContent(propConfig.getProperty(configLoginContent));
-				}
-				else if (key.equalsIgnoreCase(configLoginURL)){
-					spConfig.setLoginURL(propConfig.getProperty(configLoginURL));
-				}
-				else if (key.startsWith(configLoginCookiePrefix)) {
-					String cookieProp = propConfig.getProperty(key);
-					// make sure the properties file actually has a value for the cookie
-					if (cookieProp != null && !cookieProp.isEmpty()){
-						String[] cookie = cookieProp.split(",");
-						
-						if(cookie.length > 0 && cookie[0] != null){
-							String name = cookie[0].trim();
-							String value;
-							if (cookie.length > 1 && cookie[1] != null){
-								value = cookie[1].trim();
-							}
-							else{
-								value = null;
-							}
-							spConfig.addLoginCookie(name, value);
-						}
-					}
-				}
-				else if (key.startsWith(configIdPAttributePrefix)) {
-					String[] attribute = propConfig.getProperty(key).split(",");
-					String name = attribute[0].trim();
-					String nameformat = attribute[1].trim();
-					String value = attribute[2].trim();
-					spConfig.addAttribute(name, nameformat, value);
-				}
-				else {
-					System.err
-							.println("Unknown property in target SP configuration file");
-				}
-
-			}
-		} catch (IOException e) {
-			logger.error("Could not read the target SP configuration file", e);
-		}
-	}
-
-	/**
 	 * Run the test case that is provided.
 	 * 
 	 * @param testcase
@@ -414,11 +334,9 @@ public class SPTestRunner {
 	 * @return a string representing the test result in JSON format.
 	 */
 	private static TestStatus runTest(TestCase testcase) {
-		HttpClientBuilder clientBuilder;
+		browser.getOptions().setRedirectEnabled(true);
 		if (command.hasOption("insecure")) {
-			clientBuilder = HttpClients.custom().setHostnameVerifier(new AllowAllHostnameVerifier());
-		} else {
-			clientBuilder = HttpClients.custom();
+			browser.getOptions().setUseInsecureSSL(true);
 		}
 		// run the test case according to what type of test case it is
 		if (testcase instanceof MetadataTestCase) {
@@ -432,20 +350,8 @@ public class SPTestRunner {
 			return mdTestcase.checkMetadata(metadata);
 		} else if (testcase instanceof RequestTestCase) {
 			RequestTestCase reqTC = (RequestTestCase) testcase;
-
-			// start login attempt with target SP
-			try {
-				// create and execute the HTTP Request to access the target SP
-				// login page
-				HttpUriRequest request = new HttpGet(new URIBuilder(spConfig.getStartPage()).build());
-				clientBuilder.build().execute(request);
-			} catch (URISyntaxException e) {
-				logger.error("The URI syntax for the SP's startpage is incorrect", e);
-			} catch (ClientProtocolException e) {
-				logger.error("Could not execute HTTP request for the RequestTestCase", e);
-			} catch (IOException e) {
-				logger.error("Could not execute HTTP request for the RequestTestCase", e);
-			}
+			// make the SP send the AuthnRequest by starting an SP-initiated login attempt
+			retrieveLoginPage(true); 
 
 			// the SAML Request should have been retrieved by the mock IdP and
 			// set here during the execute() method
@@ -471,48 +377,24 @@ public class SPTestRunner {
 			for (LoginAttempt login : logins) {
 				// start login attempt with target SP
 				try {
-					URI loginpage;
-					if (login.isSPInitiated()) {
-						// login from the SP's start page
-						loginpage = new URIBuilder(spConfig.getStartPage()).build();
-					} else {
-						// login from the IdP's page
-						loginpage = new URIBuilder(
-								testsuite.getMockIdPHostname()).setPort(
-								testsuite.getMockIdPPort()).build();
-					}
-
-					// create and execute the HTTP Request to access the target
-					// SP login page
-					HttpUriRequest request = new HttpGet(loginpage);
-					// create the httpclient, optionally configured to ignore
-					// https certificates
-					CloseableHttpClient userAgent = clientBuilder.build();
-					// create context to maintain session information
-					HttpClientContext session = HttpClientContext.create();
-					HttpResponse httpResponse = userAgent.execute(request, session);
+					// retrieve the login page, thereby sending the AuthnRequest to the mock IdP
+					retrieveLoginPage(login.isSPInitiated());
 					
-					// check if the response was redirected (which should be due
-					// to the artifact binding)
-					if (session.getRedirectLocations().size() > 1) {
-						logger.error("Trying to use Artifact binding, this is not yet supported");
-						BufferedReader artContent = new BufferedReader(new InputStreamReader(httpResponse.getEntity().getContent()));
-						String artPage = "";
-						while (artContent.ready()) {
-							artPage += artContent.readLine() + "\n";
-						}
-						logger.debug(artPage);
+					// check if the saml request has correctly been retrieved by the mock IdP 
+					// if not, most likely caused by trying to use artifact binding
+					if (samlRequest == null || samlRequest.isEmpty()) {
+						logger.error("Could not retrieve the SAML request");
 						return null;
 					}
+					// create request to send the SAML response to the SP's ACS url
+					URL acsURL = new URL(spConfig.getMDACSLocation(SAMLValues.BINDING_HTTP_POST));
+					WebRequest sendResponse = new WebRequest(acsURL, HttpMethod.POST);
+					ArrayList<NameValuePair> postParameters = new ArrayList<NameValuePair>();
+					postParameters.add(new NameValuePair(SAMLValues.URLPARAM_SAMLRESPONSE_POST, SAMLUtil.encodeSamlMessageForPost(login.getResponse(samlRequest))));
+					sendResponse.setRequestParameters(postParameters);
+					// send the SAML response to the SP
+					HtmlPage responsePage = browser.getPage(sendResponse);
 					
-					RequestBuilder reqBldr = RequestBuilder
-							.post()
-							.setUri(spConfig.getMDACSLocation(SAMLValues.BINDING_HTTP_POST))
-							.addParameter(
-									SAMLValues.URLPARAM_SAMLRESPONSE_POST, SAMLUtil.encodeSamlMessageForPost(login.getResponse(samlRequest)));
-
-					HttpResponse response = userAgent.execute(reqBldr.build(), session);
-
 					boolean statuscodeMatch = false;
 					boolean urlMatch = false;
 					boolean contentMatch = false;
@@ -522,7 +404,7 @@ public class SPTestRunner {
 					if (spConfig.getLoginStatuscode() == 0) {
 						// do not match against status code
 						statuscodeMatch = true;
-					} else if (response.getStatusLine().getStatusCode() == spConfig.getLoginStatuscode()) {
+					} else if (responsePage.getWebResponse().getStatusCode() == spConfig.getLoginStatuscode()) {
 						statuscodeMatch = true;
 					}
 					
@@ -532,29 +414,16 @@ public class SPTestRunner {
 						urlMatch = true;
 					} 
 					else {
-						List<URI> locations = session.getRedirectLocations();
-						String currentLocation;
-						// if no redirects were found so current URL is the one we sent our request to
-						if(locations.isEmpty())
-							currentLocation = reqBldr.getUri().toString();
-						else
-							currentLocation = locations.get(locations.size()-1).toString();
+						String currentLocation = responsePage.getUrl().toString();
 						// check if the current location matches what we expect when we are correctly logged in 
 						if (currentLocation.matches(spConfig.getLoginURL())) {
 							urlMatch = true;
 						}
 					}
 
-					// retrieve the page content from the response
-					BufferedReader responseContent = new BufferedReader(new InputStreamReader(response.getEntity().getContent()));
-					// read the page into a string and check if it matches
-					// what we expect to see when we log in
-					String page = "";
-					while (responseContent.ready()) {
-						page += responseContent.readLine() + "\n";
-					}
+					// check if the page matches what we expect to see when we log in
+					String page = responsePage.getWebResponse().getContentAsString();
 					logger.trace("The received page:\n"+page);
-					// check the page content to see if the login was successful
 					if (spConfig.getLoginContent() == null) {
 						// do no match against page content
 						contentMatch = true;
@@ -575,7 +444,7 @@ public class SPTestRunner {
 						cookiesMatch = true;
 					} else {
 						HashMap<String, String> checkCookies = spConfig.getLoginCookies();
-						List<Cookie> sessionCookies = session.getCookieStore().getCookies();
+						Set<Cookie> sessionCookies = browser.getCookies(acsURL);
 						
 						// only check for cookies if we actually have some to match against
 						if (checkCookies.size() > 0){
@@ -616,10 +485,8 @@ public class SPTestRunner {
 					else{
 						testResults.add(new Boolean(false));
 					}
-					// close the HTTPClient
-					userAgent.close();
-				} catch (URISyntaxException e) {
-					logger.error("The URI syntax for the SP's startpage is incorrect", e);
+					// close the browser
+					browser.closeAllWindows();
 				} catch (ClientProtocolException e) {
 					logger.error("Could not execute HTTP request for the LoginTestCase", e);
 				} catch (IOException e) {
@@ -638,6 +505,103 @@ public class SPTestRunner {
 	}
 
 	/**
+	 * Retrieves the login page from the SP, thereby sending the SP's AuthnRequest to
+	 * the mock IdP. 
+	 * 
+	 * @return the login page, or null if the login page could not be retrieved
+	 */
+	private static Page retrieveLoginPage(boolean spInitiated) {
+		// start login attempt with target SP
+		try {
+			// create a URI of the start page (which also checks the validity of the string as URI)
+			URI loginURI;
+			if (spInitiated) {
+				// login from the SP's start page
+				loginURI = new URIBuilder(spConfig.getStartPage()).build();
+			} else {
+				// login from the IdP's page
+				loginURI = new URIBuilder(
+						testsuite.getMockIdPHostname()).setPort(
+						testsuite.getMockIdPPort()).build();
+			}
+			Page retrievedPage = browser.getPage(loginURI.toURL());
+
+			// interact with the login page in order to get logged in
+			ArrayList<Object> interactions = spConfig.getPreloginInteractions();
+			// execute all interactions
+			for(Object interaction : interactions){
+				if(retrievedPage instanceof HtmlPage){
+					// cast the Page to an HtmlPage so we can interact with it
+					HtmlPage loginPage = (HtmlPage) retrievedPage;
+					logger.trace("Login page");
+					logger.trace(loginPage.getWebResponse().getContentAsString());
+				
+					// cast the interaction to the correct class
+					if(interaction instanceof FormInteraction) {
+						FormInteraction forminteraction = (FormInteraction) interaction;
+						HtmlForm preLoginForm = loginPage.getFormByName(forminteraction.getFormName());
+						HtmlSubmitInput button = preLoginForm.getInputByName(forminteraction.getSubmitName());
+						
+						// fill in all provided input fields
+						HashMap<String, String> inputs = forminteraction.getInputs();
+						for(Map.Entry<String, String> input: inputs.entrySet()){
+							// retrieve the first input field with the provided name
+							HtmlInput textField = preLoginForm.getInputsByName(input.getKey()).get(0);	
+							textField.setValueAttribute(input.getValue());
+						}
+					    // submit the form, updating the retrieved page
+					    retrievedPage = button.click();
+					    logger.trace("Login page (after form submit)");
+					    logger.trace(loginPage.getWebResponse().getContentAsString());
+					}
+					else if(interaction instanceof LinkInteraction) {
+						LinkInteraction linkinteraction = (LinkInteraction) interaction;
+						String inputValue = linkinteraction.getLookupValue();
+						HtmlAnchor input;
+						if (linkinteraction.getLookupType() == LinkInteraction.LookupType.NAME)
+							input = loginPage.getAnchorByName(inputValue);
+						else if (linkinteraction.getLookupType() == LinkInteraction.LookupType.TEXT)
+							input = loginPage.getAnchorByText(inputValue);
+						else if (linkinteraction.getLookupType() == LinkInteraction.LookupType.HREF)
+							input = loginPage.getAnchorByHref(inputValue);
+						else{
+							logger.error("Unknown lookup type found in link interaction object");
+							input = null;
+						}
+						// click the link and update the retrieved page
+						if (input != null) retrievedPage = input.click();
+						
+						logger.trace("Login page (after link click)");
+					    logger.trace(loginPage.getWebResponse().getContentAsString());
+					}
+					else{
+						logger.error("Unknown interaction class found");
+					}
+				}
+				else{
+					logger.error("The login page is not an HTML page, so it's not possible to interact with it");
+					logger.trace("Retrieved page:");
+					logger.trace(retrievedPage.getWebResponse().getContentAsString());
+					break;
+				}
+			}
+			// return the retrieved page
+			return retrievedPage;
+		} catch (FailingHttpStatusCodeException e) {
+			logger.error("The login page did not return a valid HTTP status code");
+		} catch (MalformedURLException e) {
+			logger.error("THe login page's URL is not valid");
+		} catch (IOException e) {
+			logger.error("The login page could not be accessed due to an I/O error");
+		} catch (URISyntaxException e) {
+			logger.error("The URI syntax for the SP's startpage is incorrect", e);
+		} catch (ElementNotFoundException e){
+			logger.error("The interaction link lookup could not find the specified element");
+		}
+		return null;
+	}
+
+	/**
 	 * Process the test results and output them appropriately
 	 * 
 	 * @param testresult
@@ -645,7 +609,6 @@ public class SPTestRunner {
 	 */
 	private static void outputTestResult(Map<TestCase, TestStatus> testresults) {
 		// TODO maybe use a templating system to output nicely at some point, now just output to sysout
-		// if testcase is null, an error occurred before or after running the test.
 		for (Map.Entry<TestCase, TestStatus> testresult : testresults.entrySet()) {
 			String name = testresult.getKey().getClass().getSimpleName();
 			//String description = testresult.getKey().getDescription();
