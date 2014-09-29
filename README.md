@@ -23,4 +23,4 @@ Usage:
 Some additional useful commands are:
 - ```SAML2Tester-SP.SPTestRunner -h``` : Show the help message, containing an overview of all available parameters.
 - ```SAML2Tester-SP.SPTestRunner -L``` : Show a list of all available test suites 
-- ```SAML2Tester-SP.SPTestRunner -t SAML2Int -l``` : Show a list of all available test cases in the test suite "SAML2Int"
+- ```SAML2Tester-SP.SPTestRunner -t <test suite> -l``` : Show a list of all available test cases in the given test suite
