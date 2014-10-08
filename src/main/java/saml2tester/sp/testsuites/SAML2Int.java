@@ -298,7 +298,7 @@ public class SAML2Int extends TestSuite {
 
 		@Override
 		public String getDescription() {
-			return "The Service Provider must allow logging in with either the persistent or transient name identifier format";
+			return "Test if the Service Provider allows logging in with either the persistent or transient name identifier format";
 		}
 
 		@Override
@@ -368,9 +368,9 @@ public class SAML2Int extends TestSuite {
 					String requestID = SAMLUtil.getSamlMessageID(request);
 					
 					// create the minimally required Response
-					Response responseTransient = createMinimalWebSSOResponse();
+					Response responsePersistent = createMinimalWebSSOResponse();
 					// add attributes and sign the assertions in the response
-					List<Assertion> assertions = responseTransient.getAssertions();
+					List<Assertion> assertions = responsePersistent.getAssertions();
 					for (Assertion assertion : assertions){
 						// create nameid with persistent format
 						NameID nameid = (NameID) Configuration.getBuilderFactory().getBuilder(NameID.DEFAULT_ELEMENT_NAME).buildObject(NameID.DEFAULT_ELEMENT_NAME);
@@ -388,9 +388,9 @@ public class SAML2Int extends TestSuite {
 						SAMLUtil.sign(assertion, getIdPPrivateKey(null), getIdPCertificate(null));
 					}
 					// add the InReplyTo attribute to the Response as well
-					responseTransient.setInResponseTo(requestID);
+					responsePersistent.setInResponseTo(requestID);
 
-					return SAMLUtil.toXML(responseTransient);
+					return SAMLUtil.toXML(responsePersistent);
 				}
 			}
 			attempts.add(new LoginAttemptTransient());
@@ -421,6 +421,81 @@ public class SAML2Int extends TestSuite {
 					return TestStatus.ERROR;
 				}
 			}
+		}
+	}
+	
+	/**
+	 * Tests the following part of the following part of the SAML2Int Profile: 
+	 * Service Providers MUST support unsolicited <saml2p:Response> messages (i.e., responses that are not the result of an 
+	 * earlier <saml2p:AuthnRequest> message).
+	 * 
+	 * @author RiaasM
+	 */
+	public class LoginIdPInitiated implements LoginTestCase{
+
+		@Override
+		public String getDescription() {
+			return "Test if the Service Provider allows IdP-initiated login";
+		}
+
+		@Override
+		public String getSuccessMessage() {
+			return "The Service Provider allowed IdP-initiated login";
+		}
+
+		@Override
+		public String getFailedMessage() {
+			return "The Service Provider did not allow IdP-initiated login";
+		}
+
+		@Override
+		public List<LoginAttempt> getLoginAttempts() {
+			ArrayList<LoginAttempt> attempts = new ArrayList<LoginAttempt>();
+		
+			// create the classes that will contain the login attempts and SAML Responses
+			class LoginAttemptIdPInitiated implements LoginAttempt{
+
+				@Override
+				public boolean isSPInitiated() {
+					return false;
+				}
+				
+				@Override
+				public String getResponse(String request) {
+					// create the minimally required Response
+					Response response = createMinimalWebSSOResponse();
+					// add attributes and sign the assertions in the response
+					List<Assertion> assertions = response.getAssertions();
+					for (Assertion assertion : assertions){
+						// create nameid with transient format
+						NameID nameid = (NameID) Configuration.getBuilderFactory().getBuilder(NameID.DEFAULT_ELEMENT_NAME).buildObject(NameID.DEFAULT_ELEMENT_NAME);
+						nameid.setValue("_"+UUID.randomUUID().toString());
+						nameid.setFormat(SAMLValues.NAMEID_FORMAT_TRANSIENT);
+						assertion.getSubject().setNameID(nameid);
+
+						// add the attributes
+						addTargetSPAttributes(assertion);
+						SAMLUtil.sign(assertion, getIdPPrivateKey(null), getIdPCertificate(null));
+					}
+					// add the InReplyTo attribute to the Response as well
+
+					String responseXML = SAMLUtil.toXML(response);
+					logger.trace(responseXML);
+					return responseXML;
+				}
+			}
+			
+			attempts.add(new LoginAttemptIdPInitiated());
+			return attempts;
+		}
+
+		@Override
+		public TestStatus checkLoginResults(List<Boolean> loginResults) {
+			// the results should come back in the same order as they were provided, so we can check which login attempts succeeded
+			if (loginResults.get(0).booleanValue())	
+				return TestStatus.OK;
+			else
+				return TestStatus.ERROR;
 		}
 	}
 }

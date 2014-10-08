@@ -4,8 +4,6 @@ import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -24,7 +22,6 @@ import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 import org.apache.http.client.ClientProtocolException;
-import org.apache.http.client.utils.URIBuilder;
 import org.apache.log4j.BasicConfigurator;
 import org.apache.log4j.PropertyConfigurator;
 import org.eclipse.jetty.server.Server;
@@ -334,6 +331,8 @@ public class SPTestRunner {
 	 * @return a string representing the test result in JSON format.
 	 */
 	private static TestStatus runTest(TestCase testcase) {
+		logger.info("Running testcase: "+ testcase.getClass().getSimpleName());
+		
 		browser.getOptions().setRedirectEnabled(true);
 		if (command.hasOption("insecure")) {
 			browser.getOptions().setUseInsecureSSL(true);
@@ -380,13 +379,15 @@ public class SPTestRunner {
 					// retrieve the login page, thereby sending the AuthnRequest to the mock IdP
 					retrieveLoginPage(login.isSPInitiated());
 					
-					// check if the saml request has correctly been retrieved by the mock IdP 
-					// if not, most likely caused by trying to use artifact binding
-					if (samlRequest == null || samlRequest.isEmpty()) {
-						logger.error("Could not retrieve the SAML request");
-						return null;
+					if(login.isSPInitiated()){
+						// check if the saml request has correctly been retrieved by the mock IdP 
+						// if not, most likely caused by trying to use artifact binding
+						if (samlRequest == null || samlRequest.isEmpty()) {
+							logger.error("Could not retrieve the SAML request");
+							return null;
+						}
 					}
-					// create request to send the SAML response to the SP's ACS url
+					// create HTTP request to send the SAML response to the SP's ACS url
 					URL acsURL = new URL(spConfig.getMDACSLocation(SAMLValues.BINDING_HTTP_POST));
 					WebRequest sendResponse = new WebRequest(acsURL, HttpMethod.POST);
 					ArrayList<NameValuePair> postParameters = new ArrayList<NameValuePair>();
@@ -404,8 +405,12 @@ public class SPTestRunner {
 					if (spConfig.getLoginStatuscode() == 0) {
 						// do not match against status code
 						statuscodeMatch = true;
-					} else if (responsePage.getWebResponse().getStatusCode() == spConfig.getLoginStatuscode()) {
+					} 
+					else if (responsePage.getWebResponse().getStatusCode() == spConfig.getLoginStatuscode()) {
 						statuscodeMatch = true;
+					}
+					else{
+						logger.debug("Could not match the following URL against the returned page:\n"+responsePage.getWebResponse().getStatusCode());
 					}
 					
 					// check the URL of the page to see if the login was successful
@@ -414,10 +419,14 @@ public class SPTestRunner {
 						urlMatch = true;
 					} 
 					else {
-						String currentLocation = responsePage.getUrl().toString();
+						URL responseURL = responsePage.getUrl();
+						URL matchURL = new URL(spConfig.getLoginURL());
 						// check if the current location matches what we expect when we are correctly logged in 
-						if (currentLocation.matches(spConfig.getLoginURL())) {
+						if (responseURL.equals(matchURL)) {
 							urlMatch = true;
+						}
+						else{
+							logger.debug("Could not match the URL "+matchURL.toString()+" against the returned page's URL "+responseURL.toString());
 						}
 					}
 
@@ -437,6 +446,9 @@ public class SPTestRunner {
 						if (regexM.find()) {
 							contentMatch = true;
 						}
+						else{
+							logger.debug("Could not match the following regex against the returned page:\n"+contentRegex);
+						}
 					}
 					// check the cookies
 					if (spConfig.getLoginCookies().isEmpty()) {
@@ -445,10 +457,11 @@ public class SPTestRunner {
 					} else {
 						HashMap<String, String> checkCookies = spConfig.getLoginCookies();
 						Set<Cookie> sessionCookies = browser.getCookies(acsURL);
-						
+						// initialize the match to true and set it to false if we can't match a cookie
+						cookiesMatch = true;
 						// only check for cookies if we actually have some to match against
 						if (checkCookies.size() > 0){
-							int matchCount = 0;
+							boolean found = false;
 							// check if each user-supplied cookie name and value is available
 							for (Entry<String, String> checkCookie : checkCookies.entrySet()) {
 								String name = checkCookie.getKey();
@@ -459,22 +472,24 @@ public class SPTestRunner {
 									String cookieValue = sessionCookie.getValue();
 									// compare the cookie names
 									if (cookieName.equalsIgnoreCase(name)) {
-										// if no value give, you don't need to compare it
+										// if no value given, you don't need to compare it
 										if (value == null || value.isEmpty()) {
-											matchCount++;
+											found = true;
 											break;
 										} else {
 											if (cookieValue.equalsIgnoreCase(value)) {
-												matchCount++;
+												found = true;
 												break;
 											}
 										}
 									}
 								}
-							}
-							// if all cookies have been found in the session's cookies, then this matches as well
-							if (matchCount == checkCookies.size()) {
-								cookiesMatch = true;
+								// this cookie could not be found, so we could not find a match
+								if (!found){
+									logger.debug("Could not match the following cookie against the returned page:\n"+checkCookie.getKey()+", "+checkCookie.getValue());
+									cookiesMatch = false;
+									break;
+								}
 							}
 						}
 					}
@@ -485,7 +500,9 @@ public class SPTestRunner {
 					else{
 						testResults.add(new Boolean(false));
 					}
-					// close the browser
+					// close the browser windows
+					browser.getCache().clear();
+					browser.getCookieManager().clearCookies();
 					browser.closeAllWindows();
 				} catch (ClientProtocolException e) {
 					logger.error("Could not execute HTTP request for the LoginTestCase", e);
@@ -514,87 +531,90 @@ public class SPTestRunner {
 		// start login attempt with target SP
 		try {
 			// create a URI of the start page (which also checks the validity of the string as URI)
-			URI loginURI;
+			URL loginURL;
 			if (spInitiated) {
 				// login from the SP's start page
-				loginURI = new URIBuilder(spConfig.getStartPage()).build();
-			} else {
-				// login from the IdP's page
-				loginURI = new URIBuilder(
-						testsuite.getMockIdPHostname()).setPort(
-						testsuite.getMockIdPPort()).build();
-			}
-			Page retrievedPage = browser.getPage(loginURI.toURL());
-
-			// interact with the login page in order to get logged in
-			ArrayList<Object> interactions = spConfig.getPreloginInteractions();
-			// execute all interactions
-			for(Object interaction : interactions){
-				if(retrievedPage instanceof HtmlPage){
-					// cast the Page to an HtmlPage so we can interact with it
-					HtmlPage loginPage = (HtmlPage) retrievedPage;
-					logger.trace("Login page");
-					logger.trace(loginPage.getWebResponse().getContentAsString());
-				
-					// cast the interaction to the correct class
-					if(interaction instanceof FormInteraction) {
-						FormInteraction forminteraction = (FormInteraction) interaction;
-						HtmlForm preLoginForm = loginPage.getFormByName(forminteraction.getFormName());
-						HtmlSubmitInput button = preLoginForm.getInputByName(forminteraction.getSubmitName());
-						
-						// fill in all provided input fields
-						HashMap<String, String> inputs = forminteraction.getInputs();
-						for(Map.Entry<String, String> input: inputs.entrySet()){
-							// retrieve the first input field with the provided name
-							HtmlInput textField = preLoginForm.getInputsByName(input.getKey()).get(0);	
-							textField.setValueAttribute(input.getValue());
+				loginURL = new URL(spConfig.getStartPage());
+			
+				Page retrievedPage = browser.getPage(loginURL);
+	
+				// interact with the login page in order to get logged in
+				ArrayList<Object> interactions = spConfig.getPreloginInteractions();
+				// execute all interactions
+				for(Object interaction : interactions){
+					if(retrievedPage instanceof HtmlPage){
+						// cast the Page to an HtmlPage so we can interact with it
+						HtmlPage loginPage = (HtmlPage) retrievedPage;
+						logger.trace("Login page");
+						logger.trace(loginPage.getWebResponse().getContentAsString());
+					
+						// cast the interaction to the correct class
+						if(interaction instanceof FormInteraction) {
+							FormInteraction forminteraction = (FormInteraction) interaction;
+							HtmlForm preLoginForm = loginPage.getFormByName(forminteraction.getFormName());
+							HtmlSubmitInput button = preLoginForm.getInputByName(forminteraction.getSubmitName());
+							
+							// fill in all provided input fields
+							HashMap<String, String> inputs = forminteraction.getInputs();
+							for(Map.Entry<String, String> input: inputs.entrySet()){
+								// retrieve the first input field with the provided name
+								HtmlInput textField = preLoginForm.getInputsByName(input.getKey()).get(0);	
+								textField.setValueAttribute(input.getValue());
+							}
+						    // submit the form, updating the retrieved page
+						    retrievedPage = button.click();
+						    logger.trace("Login page (after form submit)");
+						    logger.trace(loginPage.getWebResponse().getContentAsString());
 						}
-					    // submit the form, updating the retrieved page
-					    retrievedPage = button.click();
-					    logger.trace("Login page (after form submit)");
-					    logger.trace(loginPage.getWebResponse().getContentAsString());
-					}
-					else if(interaction instanceof LinkInteraction) {
-						LinkInteraction linkinteraction = (LinkInteraction) interaction;
-						String inputValue = linkinteraction.getLookupValue();
-						HtmlAnchor input;
-						if (linkinteraction.getLookupType() == LinkInteraction.LookupType.NAME)
-							input = loginPage.getAnchorByName(inputValue);
-						else if (linkinteraction.getLookupType() == LinkInteraction.LookupType.TEXT)
-							input = loginPage.getAnchorByText(inputValue);
-						else if (linkinteraction.getLookupType() == LinkInteraction.LookupType.HREF)
-							input = loginPage.getAnchorByHref(inputValue);
+						else if(interaction instanceof LinkInteraction) {
+							LinkInteraction linkinteraction = (LinkInteraction) interaction;
+							String inputValue = linkinteraction.getLookupValue();
+							HtmlAnchor input;
+							if (linkinteraction.getLookupType() == LinkInteraction.LookupType.NAME)
+								input = loginPage.getAnchorByName(inputValue);
+							else if (linkinteraction.getLookupType() == LinkInteraction.LookupType.TEXT)
+								input = loginPage.getAnchorByText(inputValue);
+							else if (linkinteraction.getLookupType() == LinkInteraction.LookupType.HREF)
+								input = loginPage.getAnchorByHref(inputValue);
+							else{
+								logger.error("Unknown lookup type found in link interaction object");
+								input = null;
+							}
+							// click the link and update the retrieved page
+							if (input != null) retrievedPage = input.click();
+							
+							logger.trace("Login page (after link click)");
+						    logger.trace(retrievedPage.getWebResponse().getContentAsString());
+						}
 						else{
-							logger.error("Unknown lookup type found in link interaction object");
-							input = null;
+							logger.error("Unknown interaction class found");
 						}
-						// click the link and update the retrieved page
-						if (input != null) retrievedPage = input.click();
-						
-						logger.trace("Login page (after link click)");
-					    logger.trace(loginPage.getWebResponse().getContentAsString());
 					}
 					else{
-						logger.error("Unknown interaction class found");
+						logger.error("The login page is not an HTML page, so it's not possible to interact with it");
+						logger.trace("Retrieved page:");
+						logger.trace(retrievedPage.getWebResponse().getContentAsString());
+						break;
 					}
 				}
-				else{
-					logger.error("The login page is not an HTML page, so it's not possible to interact with it");
-					logger.trace("Retrieved page:");
-					logger.trace(retrievedPage.getWebResponse().getContentAsString());
-					break;
-				}
+				return retrievedPage;
+			} 
+			else {
+				// login from the IdP's page
+				loginURL = new URL(
+						testsuite.getMockIdPProtocol(),
+						testsuite.getMockIdPHostname(),
+						testsuite.getMockIdPPort(),
+						"");
+				return browser.getPage(loginURL);
 			}
 			// return the retrieved page
-			return retrievedPage;
 		} catch (FailingHttpStatusCodeException e) {
 			logger.error("The login page did not return a valid HTTP status code");
 		} catch (MalformedURLException e) {
 			logger.error("THe login page's URL is not valid");
 		} catch (IOException e) {
 			logger.error("The login page could not be accessed due to an I/O error");
-		} catch (URISyntaxException e) {
-			logger.error("The URI syntax for the SP's startpage is incorrect", e);
 		} catch (ElementNotFoundException e){
 			logger.error("The interaction link lookup could not find the specified element");
 		}
@@ -627,18 +647,6 @@ public class SPTestRunner {
 	}
 
 	/**
-	 * Retrieve the SAML Request that was received from the SP
-	 * 
-	 * This can only be retrieved once it has been set by the mock IdP, 
-	 * which happens after the SP has accessed the mock IdP.
-	 * 
-	 * @return the SAML Request
-	 */
-//	public static String getSamlRequest() {
-//		return samlRequest;
-//	}
-
-	/**
 	 * Set the SAML Request that was received from the SP
 	 * 
 	 * This is set from the Handler that processes the SP's login attempt
@@ -649,18 +657,6 @@ public class SPTestRunner {
 	public static void setSamlRequest(String request) {
 		samlRequest = request;
 	}
-
-	/**
-	 * Retrieve the SAML Binding that the SP has used to send its AuthnRequest
-	 * 
-	 * This can only be retrieved once it has been set by the mock IdP, 
-	 * which happens after the SP has accessed the mock IdP.
-	 * 
-	 * @return the name of SAML Binding
-	 */
-//	public static String getSamlRequestBinding() {
-//		return samlRequestBinding;
-//	}
 
 	/**
 	 * Set the SAML Binding that the SP has used to send its AuthnRequest

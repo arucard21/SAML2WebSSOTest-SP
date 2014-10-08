@@ -84,9 +84,9 @@ public class SamlWebSSOHandler extends AbstractHandler{
         }
         
         // Show a simple page as response
-    	response.setContentType("text/plain");
+    	response.setContentType("text/html");
 		response.setStatus(HttpServletResponse.SC_OK);
-		response.getWriter().println("<p>The request has been handled and the following SAML Request was received:</p><br><br>"+samlRequest);
+		response.getWriter().println("<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\" \"http://www.w3.org/TR/html4/loose.dtd\"><html><head><title>SAML2Tester Mock IdP</title></head><body><p>The request has been handled and the following SAML Request was received:</p><br><br>"+samlRequest+"</body></html>");
 		request.setHandled(true);
 	}
 }
