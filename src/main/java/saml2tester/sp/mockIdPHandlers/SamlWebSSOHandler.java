@@ -13,7 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import saml2tester.common.SAMLUtil;
-import saml2tester.common.standardNames.SAMLValues;
+import saml2tester.common.standardNames.SAMLmisc;
 import saml2tester.sp.SPTestRunner;
 
 public class SamlWebSSOHandler extends AbstractHandler{
@@ -37,17 +37,17 @@ public class SamlWebSSOHandler extends AbstractHandler{
 
         if (method.equalsIgnoreCase("GET")) {
             // retrieve the SAML Request and binding
-        	String reqParam = request.getParameter(SAMLValues.URLPARAM_SAMLREQUEST_REDIRECT);
+        	String reqParam = request.getParameter(SAMLmisc.URLPARAM_SAMLREQUEST_REDIRECT);
         	
             if (reqParam != null) {
-            	SPTestRunner.setSamlRequestBinding(SAMLValues.BINDING_HTTP_REDIRECT);
+            	SPTestRunner.setSamlRequestBinding(SAMLmisc.BINDING_HTTP_REDIRECT);
             	samlRequest = SAMLUtil.decodeSamlMessageForRedirect(reqParam);
                 SPTestRunner.setSamlRequest(samlRequest);
 
                 logger.debug("SAML Request received through GET by the mock IdP");
             }
-            else if (request.getParameter(SAMLValues.URLPARAM_SAMLARTIFACT) != null){
-            	SPTestRunner.setSamlRequestBinding(SAMLValues.BINDING_HTTP_ARTIFACT);
+            else if (request.getParameter(SAMLmisc.URLPARAM_SAMLARTIFACT) != null){
+            	SPTestRunner.setSamlRequestBinding(SAMLmisc.BINDING_HTTP_ARTIFACT);
             	samlRequest = "";
                 // TODO: implement for BINDING_HTTP_ARTIFACT
             }
@@ -58,18 +58,18 @@ public class SamlWebSSOHandler extends AbstractHandler{
         }
         else if (method.equalsIgnoreCase("POST")) {
             // get the POST variables
-        	String reqParam = request.getParameter(SAMLValues.URLPARAM_SAMLREQUEST_POST);
+        	String reqParam = request.getParameter(SAMLmisc.URLPARAM_SAMLREQUEST_POST);
             
             if (reqParam != null){
-            	SPTestRunner.setSamlRequestBinding(SAMLValues.BINDING_HTTP_POST);
+            	SPTestRunner.setSamlRequestBinding(SAMLmisc.BINDING_HTTP_POST);
             	samlRequest = SAMLUtil.decodeSamlMessageForPost(reqParam);
             	SPTestRunner.setSamlRequest(samlRequest);
 
             	logger.debug("SAML Request received through POST by the mock IdP");
             		
             }
-            else if (request.getParameter(SAMLValues.URLPARAM_SAMLARTIFACT) != null){
-            	SPTestRunner.setSamlRequestBinding(SAMLValues.BINDING_HTTP_ARTIFACT);
+            else if (request.getParameter(SAMLmisc.URLPARAM_SAMLARTIFACT) != null){
+            	SPTestRunner.setSamlRequestBinding(SAMLmisc.BINDING_HTTP_ARTIFACT);
             	samlRequest = "";
                 // TODO: implement for BINDING_HTTP_ARTIFACT
             }

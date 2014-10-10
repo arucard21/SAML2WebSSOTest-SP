@@ -9,6 +9,8 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
@@ -47,10 +49,12 @@ import com.gargoylesoftware.htmlunit.util.NameValuePair;
 import saml2tester.common.FormInteraction;
 import saml2tester.common.LinkInteraction;
 import saml2tester.common.SAMLUtil;
+import saml2tester.common.TestResult;
 import saml2tester.common.TestStatus;
-import saml2tester.common.standardNames.SAMLValues;
+import saml2tester.common.standardNames.SAMLmisc;
 import saml2tester.sp.mockIdPHandlers.SamlWebSSOHandler;
 import saml2tester.sp.testsuites.TestSuite;
+import saml2tester.sp.testsuites.TestSuite.ConfigTestCase;
 import saml2tester.sp.testsuites.TestSuite.LoginTestCase;
 import saml2tester.sp.testsuites.TestSuite.MetadataTestCase;
 import saml2tester.sp.testsuites.TestSuite.RequestTestCase;
@@ -124,7 +128,7 @@ public class SPTestRunner {
 		options.addOption("t", "testsuite", true,"Specifies the test suite from which you wish to run a test case");
 		options.addOption("c","testcase",true,"The name of the test case you wish to run. If omitted, all test cases from the test suite are run");
 
-		HashMap<TestCase, TestStatus> testresults = null;
+		LinkedList<TestResult> testresults = new LinkedList<TestResult>();
 		try {
 			// parse the command-line arguments
 			CommandLineParser parser = new BasicParser();
@@ -187,9 +191,6 @@ public class SPTestRunner {
 					// start the mock IdP
 					mockIdP.start();
 
-					// the test results are stored for each test case that is run
-					testresults = new HashMap<TestCase, TestStatus>();
-
 					// load the requested test case(s)
 					String tc_string = command.getOptionValue("testcase");
 					if (tc_string != null && !tc_string.isEmpty()) {
@@ -198,7 +199,18 @@ public class SPTestRunner {
 						// run test
 						if (testcaseObj instanceof TestCase) {
 							TestCase testcase = (TestCase) testcaseObj;
-							testresults.put(testcase, runTest(testcase));
+							TestStatus status = runTest(testcase);
+							String message = "";
+							if (status == TestStatus.OK){
+								message = testcase.getSuccessMessage();
+							}
+							else{
+								message = testcase.getFailedMessage();
+							}
+							TestResult result = new TestResult(status, message);
+							result.setName(testcase.getClass().getSimpleName());
+							result.setDescription(testcase.getDescription());
+							testresults.add(result);
 						} else {
 							logger.error("Provided class was not a subclass of interface TestCase");
 						}
@@ -208,7 +220,18 @@ public class SPTestRunner {
 						Class<?>[] allTCs = ts_class.getDeclaredClasses();
 						for (Class<?> testcaseClass : allTCs) {
 							TestCase curTestcase = (TestCase) testcaseClass.getConstructor(testsuite.getClass()).newInstance(testsuite);
-								testresults.put(curTestcase,runTest(curTestcase));
+							TestStatus status = runTest(curTestcase);
+							String message = "";
+							if (status == TestStatus.OK){
+								message = curTestcase.getSuccessMessage();
+							}
+							else{
+								message = curTestcase.getFailedMessage();
+							}
+							TestResult result = new TestResult(status, message);
+							result.setName(curTestcase.getClass().getSimpleName());
+							result.setDescription(curTestcase.getDescription());
+							testresults.add(result);
 						}
 					}
 					// handle test result(s)
@@ -223,7 +246,7 @@ public class SPTestRunner {
 				logger.error("Test suite could not be found", e);
 			else
 				logger.error("Test case could not be found", e);
-			testresults.put(null, TestStatus.CRITICAL);
+			testresults.add(new TestResult(TestStatus.CRITICAL, ""));
 		} catch (ClassCastException e) {
 			logger.error("The test suite or case was not an instance of TestSuite", e);
 		} catch (InstantiationException e) {
@@ -338,7 +361,15 @@ public class SPTestRunner {
 			browser.getOptions().setUseInsecureSSL(true);
 		}
 		// run the test case according to what type of test case it is
-		if (testcase instanceof MetadataTestCase) {
+		if (testcase instanceof ConfigTestCase) {
+			ConfigTestCase cfTestcase = (ConfigTestCase) testcase;
+			/**
+			 * Check the SP's metadata according to the specifications of the
+			 * test case and return the status of the test
+			 */
+			return cfTestcase.checkConfig(spConfig);
+		}
+		else if (testcase instanceof MetadataTestCase) {
 			// Retrieve the SP Metadata from target SP configuration
 			Document metadata = spConfig.getMetadata();
 			MetadataTestCase mdTestcase = (MetadataTestCase) testcase;
@@ -388,10 +419,10 @@ public class SPTestRunner {
 						}
 					}
 					// create HTTP request to send the SAML response to the SP's ACS url
-					URL acsURL = new URL(spConfig.getMDACSLocation(SAMLValues.BINDING_HTTP_POST));
+					URL acsURL = new URL(spConfig.getMDACSLocation(SAMLmisc.BINDING_HTTP_POST));
 					WebRequest sendResponse = new WebRequest(acsURL, HttpMethod.POST);
 					ArrayList<NameValuePair> postParameters = new ArrayList<NameValuePair>();
-					postParameters.add(new NameValuePair(SAMLValues.URLPARAM_SAMLRESPONSE_POST, SAMLUtil.encodeSamlMessageForPost(login.getResponse(samlRequest))));
+					postParameters.add(new NameValuePair(SAMLmisc.URLPARAM_SAMLRESPONSE_POST, SAMLUtil.encodeSamlMessageForPost(login.getResponse(samlRequest))));
 					sendResponse.setRequestParameters(postParameters);
 					// send the SAML response to the SP
 					HtmlPage responsePage = browser.getPage(sendResponse);
@@ -627,22 +658,21 @@ public class SPTestRunner {
 	 * @param testresult
 	 *            is the result of the test case that was run
 	 */
-	private static void outputTestResult(Map<TestCase, TestStatus> testresults) {
+	private static void outputTestResult(List<TestResult> testresults) {
 		// TODO maybe use a templating system to output nicely at some point, now just output to sysout
-		for (Map.Entry<TestCase, TestStatus> testresult : testresults.entrySet()) {
-			String name = testresult.getKey().getClass().getSimpleName();
-			//String description = testresult.getKey().getDescription();
-			String message;
-			TestStatus status = testresult.getValue();
-			if (status.equals(TestStatus.OK))
-				message = status + ": " + testresult.getKey().getSuccessMessage();
-			else
-				message = status + ": " + testresult.getKey().getFailedMessage();
-
-			System.out.println("Test Case: " + name);
-			//System.out.println("Description: " + description);
-			System.out.println("\t" + message);
-			System.out.println("");
+		for (TestResult testresult : testresults) {
+			String name = testresult.getName();
+			String message = testresult.getResultMessage();
+			TestStatus status = testresult.getResult();
+			// use tabs to line out the test status correctly
+			String head = "";
+			if (status == TestStatus.OK || status == TestStatus.ERROR){
+				head = status + ":\t\t";
+			}
+			else{
+				head = status + ":\t";
+			}
+			System.out.println(head + message + " (" + name + ")");
 		}
 	}
 

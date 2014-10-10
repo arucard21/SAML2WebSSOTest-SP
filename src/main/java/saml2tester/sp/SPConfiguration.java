@@ -20,7 +20,6 @@ import saml2tester.common.FormInteraction;
 import saml2tester.common.LinkInteraction;
 import saml2tester.common.SAMLAttribute;
 import saml2tester.common.SAMLUtil;
-import saml2tester.common.standardNames.Attribute;
 import saml2tester.common.standardNames.MD;
 
 public class SPConfiguration {
@@ -337,10 +336,10 @@ public class SPConfiguration {
 		ArrayList<Node> acsNodes = (ArrayList<Node>) getMDNodes(MD.ASSERTIONCONSUMERSERVICE);
 		// check all ACS nodes for the requested binding
 		for (Node acs : acsNodes) {
-			if (acs.getAttributes().getNamedItem(Attribute.BINDING)
+			if (acs.getAttributes().getNamedItem(MD.BINDING)
 					.getNodeValue().equalsIgnoreCase(binding))
 				// return the location for the requested binding
-				return acs.getAttributes().getNamedItem(Attribute.LOCATION)
+				return acs.getAttributes().getNamedItem(MD.LOCATION)
 						.getNodeValue();
 		}
 		// the requested binding could not be found

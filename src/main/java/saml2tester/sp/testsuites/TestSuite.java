@@ -40,9 +40,8 @@ import org.w3c.dom.Document;
 
 import saml2tester.common.SAMLAttribute;
 import saml2tester.common.TestStatus;
-import saml2tester.common.standardNames.Attribute;
 import saml2tester.common.standardNames.MD;
-import saml2tester.common.standardNames.SAMLValues;
+import saml2tester.common.standardNames.SAMLmisc;
 import saml2tester.sp.LoginAttempt;
 import saml2tester.sp.SPConfiguration;
 import saml2tester.sp.SPTestRunner;
@@ -262,22 +261,22 @@ public abstract class TestSuite {
 		AuthnContextClassRef authncontextclassref = (AuthnContextClassRef) builderfac.getBuilder(AuthnContextClassRef.DEFAULT_ELEMENT_NAME).buildObject(AuthnContextClassRef.DEFAULT_ELEMENT_NAME);
 
 		// create status for Response
-		statuscode.setValue(SAMLValues.STATUS_SUCCESS);
+		statuscode.setValue(SAMLmisc.STATUS_SUCCESS);
 		status.setStatusCode(statuscode);
 		// create Issuer for Assertion 
 		issuer.setValue(getmockIdPEntityID());
 		// create Subject for Assertion
-		subjectconfdata.setRecipient(sp.getMDACSLocation(SAMLValues.BINDING_HTTP_POST));
+		subjectconfdata.setRecipient(sp.getMDACSLocation(SAMLmisc.BINDING_HTTP_POST));
 		subjectconfdata.setNotOnOrAfter(DateTime.now().plusMinutes(15));
 		subjectconf.setSubjectConfirmationData(subjectconfdata);
-		subjectconf.setMethod(SAMLValues.CONFIRMATION_METHOD_BEARER);
+		subjectconf.setMethod(SAMLmisc.CONFIRMATION_METHOD_BEARER);
 		subject.getSubjectConfirmations().add(subjectconf);
 		// create Conditions for Assertion
-		aud.setAudienceURI(sp.getMDAttribute(MD.ENTITYDESCRIPTOR, Attribute.ENTITYID));
+		aud.setAudienceURI(sp.getMDAttribute(MD.ENTITYDESCRIPTOR, MD.ENTITYID));
 		audRes.getAudiences().add(aud);
 		conditions.getAudienceRestrictions().add(audRes);
 		// create AuthnStatement for Assertion
-		authncontextclassref.setAuthnContextClassRef(SAMLValues.AUTHNCONTEXT_PASSWORD);
+		authncontextclassref.setAuthnContextClassRef(SAMLmisc.AUTHNCONTEXT_PASSWORD);
 		authncontext.setAuthnContextClassRef(authncontextclassref);
 		authnstatement.setAuthnContext(authncontext);
 		authnstatement.setAuthnInstant(DateTime.now());
@@ -334,7 +333,7 @@ public abstract class TestSuite {
 		assertion.getAttributeStatements().add(attrStat);
 	}
 	
-    /**
+	/**
 	 * The interface for all test cases. Defines the methods that are required for the test runner to correctly run
 	 * the test case.
 	 * 
@@ -368,6 +367,16 @@ public abstract class TestSuite {
 		String getFailedMessage();
 	}
 	
+	public interface ConfigTestCase extends TestCase {
+		
+		/**
+		 * Check the provided configuration.  
+		 * 
+		 * @return the status of the test
+		 */
+		TestStatus checkConfig(SPConfiguration config);
+	}
+
 	public interface MetadataTestCase extends TestCase {
 		
 		/**

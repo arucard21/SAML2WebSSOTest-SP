@@ -3,13 +3,11 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>SAML2Tester-SP</groupId>
 	<artifactId>SAML2Tester-SP</artifactId>
-	<version>1.0.0</version>
+	<version>1.0.1</version>
 	<properties>
 		<used.java.home>${env.JAVA_HOME}</used.java.home> <!-- ${path.separator} -->
 	</properties>
 	<build>
-		
-	
 		<plugins>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
@@ -97,7 +95,7 @@
 		<dependency>
 			<groupId>SAML2Tester-Common</groupId>
 			<artifactId>SAML2Tester-Common</artifactId>
-			<version>1.0.0</version>
+			<version>1.0.1</version>
 		</dependency>
 	</dependencies>
 </project>
