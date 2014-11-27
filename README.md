@@ -50,31 +50,31 @@ The configuration is stored in a `targetSP.json` file, which you can edit and ke
 ```
 
 You need to provide the following information (make sure the resulting JSON file is valid, e.g. by using a validator like on http://jsonlint.com/):
-- The startPage url
-- The metadata, either the actual XML string on a single line or a URL to the metadata
-- The statuscode that you should get when you are correctly logged in
-- The URL that you should be on when you are correctly logged in
-- A regular expression that matches some of the content of the page you should be on when you are correctly logged in
-- A list of the cookies you expect to have when you are correctly logged in
-  - You can specify the name and/or the value of the cookie you expect to have. If you wish to omit one of them, you can specify it as "null"
-- A list of SAML attributes that the IdP should provide the target SP in order to log in correctly. For each SAML attribute you must specify the following XML attributes (Note that the SAML attribute is the `saml:Attribute` element and the XML attributes are the attributes on that element):
-  - namespace: the namespace of the SAML attribute 
-  - prefix: the prefix for the given namespace
-  - attributeName: the name of the SAML attribute
-  - nameFormat: the format in which the name is specified
-  - friendlyName: a human-readable representation of the SAML attribute's name
-  - attributeValue: the value of the attribute
-  - customAttributes: a list of additional, custom XML attributes for this SAML attribute, specified by name and value
-  - preLoginInteractions: a list of interaction that you should be executed on the login page. The interactions are executed sequentially and should cause the target SP to send its authentication request to the IdP (e.g. clicking an IdP selection link). Each interaction is specified as follows: 
-    - interactionType: This specifies how you wish to interact with the page. This should be "form", "link" or "element".
-      - form: Allows you to look up a form on the page, fill in some of the fields and submit it
-      - link: Allows you to look up a link (with some link-specific attributes) on the page and click it
-      - element: Allows you to look up any HTML element on the page and click it
-    - lookupAttribute: This should be "id", "name", "href" or "text". Note that "href" and "text" can only be used when interactionType is "link". 
-      - id, name: The element you wish to interact with will be looked up by its "id" or "name" attribute
-      - href (link only): The link (anchor) element you wish to interact with will be looked up by its "href" attribute 
-      - text (link only):  The link (anchor) element you wish to interact with will be looked up by the entire text of the link
-    - lookupValue: This should be the value of the attribute or text for the element you wish to interact with
-    - submitName (form only): is the value of the "name" attribute on the submit button
-    - inputs (form only): is a list of names of the input fields on the form and the corresponding values you wish to fill in 
-  - postResponseInteractions: a list of interaction that you should be executed after the IdP sent its SAML Response. The interactions should cause you to be logged in to the target SP (e.g. by accepting the attributes sent in the SAML Response). The interactions are specified in the same way as the preLoginInteractions.
+- `startPage`: The URL for the startpage of your target SP
+- `metadata`: Either the actual XML string on a single line or a URL to the metadata
+- `loginStatuscode`: The HTTP statuscode that you should get when you are correctly logged in
+- `loginURL`: The URL that you should be on when you are correctly logged in
+- `loginContent`: A regular expression that matches some of the content of the page you should be on when you are correctly logged in 
+- `loginCookies`: A list of the cookies you expect to have when you are correctly logged in
+  - You can specify the `name` and/or the `value` of the cookie you expect to have. If you wish to omit one of them, you can specify it as `null`
+- `attributes`: A list of SAML attributes that the IdP should provide the target SP in order to log in correctly. For each SAML attribute you must specify the following XML attributes (Note that the SAML attribute is the "saml:Attribute" element and the XML attributes are the attributes on that element):
+  - `namespace`: the namespace of the SAML attribute 
+  - `prefix`: the prefix for the given namespace
+  - `attributeName`: the name of the SAML attribute
+  - `nameFormat`: the format in which the name is specified
+  - `friendlyName`: a human-readable representation of the SAML attribute's name
+  - `attributeValue`: the value of the attribute
+  - `customAttributes`: a list of additional, custom XML attributes for this SAML attribute, specified by `name` and `value`
+  - `preLoginInteractions`: a list of interaction that you should be executed on the login page. The interactions are executed sequentially and should cause the target SP to send its authentication request to the IdP (e.g. clicking an IdP selection link). Each interaction is specified as follows: 
+    - `interactionType`: This specifies how you wish to interact with the page. This should be `form`, `link` or `element`.
+      - `form`: Allows you to look up a form on the page, fill in some of the fields and submit it
+      - `link`: Allows you to look up a link (with some link-specific attributes) on the page and click it
+      - `element`: Allows you to look up any HTML element on the page and click it
+    - `lookupAttribute`: This should be `id`, `name`, `href` or `text`. Note that `href` and `text` can only be used when interactionType is `link`. 
+      - `id`, `name`: The element you wish to interact with will be looked up by its "id" or "name" attribute
+      - `href` (link only): The link (anchor) element you wish to interact with will be looked up by its "href" attribute 
+      - `text` (link only):  The link (anchor) element you wish to interact with will be looked up by the entire text of the link
+    - `lookupValue`: This should be the value of the attribute or text for the element you wish to interact with
+    - `submitName` (form only): is the value of the "name" attribute on the submit button
+    - `inputs` (form only): is a list of `name`s of the input fields on the form and the corresponding `value`s you wish to fill in 
+  - `postResponseInteractions`: a list of interaction that you should be executed after the IdP sent its SAML Response. The interactions should cause you to be logged in to the target SP (e.g. by accepting the attributes sent in the SAML Response). The interactions are specified in the same way as the preLoginInteractions.
