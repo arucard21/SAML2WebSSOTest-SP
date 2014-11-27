@@ -1,33 +1,23 @@
-package saml2tester.sp;
+package saml2webssotest.sp;
 
-import java.io.IOException;
-import java.nio.charset.Charset;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Properties;
-import java.util.Set;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
-import saml2tester.common.FormInteraction;
-import saml2tester.common.LinkInteraction;
-import saml2tester.common.SAMLAttribute;
-import saml2tester.common.SAMLUtil;
-import saml2tester.common.standardNames.MD;
+import saml2webssotest.common.Interaction;
+import saml2webssotest.common.StringPair;
+import saml2webssotest.common.SAMLAttribute;
+import saml2webssotest.common.standardNames.MD;
 
 public class SPConfiguration {
-	private final Logger logger = LoggerFactory.getLogger(SPConfiguration.class);
+	//private final Logger logger = LoggerFactory.getLogger(SPConfiguration.class);
 	/**
 	 * Define the keys used in the SP configuration properties file
 	 */
-	private static final String configStartPage = "targetSP.startPage";
+/*	private static final String configStartPage = "targetSP.startPage";
 	private static final String configMetadata = "targetSP.metadata";
 	private static final String configLoginStatuscode = "targetSP.login.httpstatuscode";
 	private static final String configLoginURL = "targetSP.login.url";
@@ -41,7 +31,7 @@ public class SPConfiguration {
 	private static final String configInteractionLinkText = "text";
 	private static final String configInteractionLinkHref = "href";
 	private static final String preloginPrefix = "prelogin";
-	private static final String postResponsePrefix = "postresponse";
+	private static final String postResponsePrefix = "postresponse";*/
 	/**
 	 * Contains the start page of the target SP. It should be the URL where SSO for the mock IdP is started
 	 */
@@ -62,7 +52,7 @@ public class SPConfiguration {
 	/**
 	 * Contains the cookies that should be present when you are correctly logged in. 
 	 */
-	private HashMap<String, String> loginCookies = new HashMap<String, String>();
+	private ArrayList<StringPair> loginCookies = new ArrayList<StringPair>();
 	/**
 	 * Contains a regex that should match the content of the page that is shown when you are correctly logged in. 
 	 * If it is null (default value), the content of the page will not be checked.
@@ -76,18 +66,19 @@ public class SPConfiguration {
 	/**
 	 * Contains the interactions to be used before logging in
 	 */
-	private ArrayList<Object> preloginInteractions = new ArrayList<Object>();
+	private ArrayList<Interaction> preLoginInteractions = new ArrayList<Interaction>();
 	/**
 	 * Contains the interactions to be used after receiving the response
 	 */
-	private ArrayList<Object> postresponseInteractions = new ArrayList<Object>();
+	private ArrayList<Interaction> postResponseInteractions = new ArrayList<Interaction>();
 
 	/**
 	 * Load the configuration of the target SP, provided in JSON format
 	 * 
 	 * @param targetSPConfig is the path to the configuration file of the target SP in JSON format
 	 */
-	public SPConfiguration(String targetSPConfig){
+	public SPConfiguration(){
+		/*
 		if(targetSPConfig != null && !targetSPConfig.isEmpty()){
 			try {
 				Properties propConfig = new Properties();
@@ -136,11 +127,30 @@ public class SPConfiguration {
 						}
 					}
 					else if (key.startsWith(configIdPAttributePrefix)) {
-						String[] attribute = propConfig.getProperty(key).split(",");
-						String name = attribute[0].trim();
-						String nameformat = attribute[1].trim();
-						String value = attribute[2].trim();
-						this.addAttribute(name, nameformat, value);
+						String[] attribute = propConfig.getProperty(key).split(",", -1);
+						String namespace = attribute[0].trim();
+						String prefix = attribute[1].trim();
+						String name = attribute[2].trim();
+						String nameformat = attribute[3].trim();
+						String friendlyname = attribute[4].trim();
+						String value = attribute[5].trim();
+						SAMLAttribute attr = new SAMLAttribute(namespace, prefix, name, nameformat, friendlyname, value);
+						// look for any additional attributes
+						for (int i = 5; i < attribute.length; i++){
+							// get name and value of custom attribute
+							String customName = attribute[i];
+							String customValue;
+							i++;
+							if (i < attribute.length){
+								customValue = attribute[i];
+								attr.addCustomAttribute(customName, customValue);
+							}
+							else{
+								logger.error("Configuration contained custom attribute without value");
+								break;
+							}
+						}
+						this.addAttribute(attr);
 					}
 					else if (key.startsWith(configInteractionPrefix)) {
 						String interactionProp = propConfig.getProperty(key);
@@ -168,11 +178,11 @@ public class SPConfiguration {
 							String[] linkValues = interactionProp.split(",");
 							// check how to look up the link and create the link interaction accordingly
 							if(linkValues[0].contains(configInteractionLinkName))
-								interaction = (LinkInteraction) new LinkInteraction(LinkInteraction.LookupType.NAME, linkValues[1].trim());
+								interaction = (LinkInteraction) new LinkInteraction(LinkInteraction.String.NAME, linkValues[1].trim());
 							else if(linkValues[0].contains(configInteractionLinkText))
-								interaction = (LinkInteraction) new LinkInteraction(LinkInteraction.LookupType.TEXT, linkValues[1].trim());
+								interaction = (LinkInteraction) new LinkInteraction(LinkInteraction.String.TEXT, linkValues[1].trim());
 							else if(linkValues[0].contains(configInteractionLinkHref))
-								interaction = (LinkInteraction) new LinkInteraction(LinkInteraction.LookupType.HREF, linkValues[1].trim());
+								interaction = (LinkInteraction) new LinkInteraction(LinkInteraction.String.HREF, linkValues[1].trim());
 							else{
 								logger.error("Unknown interaction link lookup type in target SP configuration file");
 								interaction = null;
@@ -201,6 +211,7 @@ public class SPConfiguration {
 				logger.error("I/O error occurred while accessing the configuration file", e);
 			}
 		}		
+		*/
 	}
 	/**
 	 * Add a single cookie to the list
@@ -208,19 +219,16 @@ public class SPConfiguration {
 	 * @param cookieName is the name of the cookie
 	 * @param cookieValue is the value of the cookie
 	 */
-	public void addLoginCookie(String cookieName, String cookieValue) {
+	/*public void addLoginCookie(String cookieName, String cookieValue) {
 		this.loginCookies.put(cookieName, cookieValue);
-	}
+	}*/
 	
 	/**
 	 * Add a single attribute to the list
 	 * 
-	 * @param attributeName is the name of the attribute
-	 * @param nameformat is the nameformat used in the attribute
-	 * @param attributeValue is the value of the attribute
+	 * @param attribute is the SAMLAttribute that should be added
 	 */
-	public void addAttribute(String attributeName, String nameformat, String attributeValue) {
-		SAMLAttribute attribute = new SAMLAttribute(attributeName, nameformat, attributeValue);
+	public void addAttribute(SAMLAttribute attribute) {
 		this.attributes.add(attribute);
 	}
 	
@@ -251,10 +259,10 @@ public class SPConfiguration {
 	public void setLoginURL(String loginURL) {
 		this.loginURL = loginURL;
 	}
-	public HashMap<String, String> getLoginCookies() {
+	public ArrayList<StringPair> getLoginCookies() {
 		return loginCookies;
 	}
-	public void setLoginCookies(HashMap<String, String> loginCookies) {
+	public void setLoginCookies(ArrayList<StringPair> loginCookies) {
 		this.loginCookies = loginCookies;
 	}
 	public String getLoginContent() {
@@ -277,6 +285,10 @@ public class SPConfiguration {
 	 * @return a list of nodes with the requested tag name
 	 */
 	public List<Node> getMDNodes(String tagName) {
+		// make sure the metadata is available
+		if (metadata == null)
+			return null;
+		
 		ArrayList<Node> nodes = new ArrayList<Node>();
 		NodeList allNodes = metadata.getElementsByTagNameNS(MD.NAMESPACE, tagName);
 		//convert NodeList to List of Node objects
@@ -295,6 +307,10 @@ public class SPConfiguration {
 	 * @return a list of the values of the requested attributes for the requested nodes
 	 */
 	public List<String> getMDAttributes(String tagName, String attrName) {
+		//make sure the metadata is available
+		if (metadata == null)
+			return null;
+		
 		ArrayList<String> resultAttributes = new ArrayList<String>();
 		NodeList allACS = metadata.getElementsByTagNameNS(MD.NAMESPACE, tagName);
 		for (int i = 0; i < allACS.getLength(); i++){
@@ -348,25 +364,25 @@ public class SPConfiguration {
 	/**
 	 * @return the preloginInteractions
 	 */
-	public ArrayList<Object> getPreloginInteractions() {
-		return preloginInteractions;
+	public ArrayList<Interaction> getPreLoginInteractions() {
+		return preLoginInteractions;
 	}
 	/**
 	 * @param preloginInteraction is the interaction object that should be added to the preloginInteractions
 	 */
-	public void addPreloginInteractions(Object preloginInteraction) {
-		this.preloginInteractions.add(preloginInteraction);
+	public void setPreLoginInteractions(ArrayList<Interaction> preLoginInteractions) {
+		this.preLoginInteractions = preLoginInteractions;
 	}
 	/**
 	 * @return the postresponseInteractions
 	 */
-	public ArrayList<Object> getPostresponseInteractions() {
-		return postresponseInteractions;
+	public ArrayList<Interaction> getPostResponseInteractions() {
+		return postResponseInteractions;
 	}
 	/**
 	 * @param postresponseInteraction is the interaction object that should be added to the postresponseInteractions
 	 */
-	public void addPostresponseInteractions(Object postresponseInteraction) {
-		this.postresponseInteractions.add(postresponseInteraction);
+	public void setPostResponseInteractions(ArrayList<Interaction> postResponseInteractions) {
+		this.postResponseInteractions = postResponseInteractions;
 	}
 }

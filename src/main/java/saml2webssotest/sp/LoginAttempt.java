@@ -1,4 +1,4 @@
-package saml2tester.sp;
+package saml2webssotest.sp;
 /**
  * The LoginAttempt interface can be used to create classes that define a login attempt at an SP
  * 

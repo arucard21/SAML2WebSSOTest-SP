@@ -4,7 +4,9 @@
 # information should be provided:
 # 
 # * the URL to the start page of the SP
-# * the SP metadata. You can use a \ character at the end to continue on a new line 
+# 
+# * the SP metadata. This can be either the XML itself or a URL to the hosted metdata. You can use a \ character at the end to continue on a new line
+#  
 # * The successful login criteria. This defines how the test should evaluate if a login attempt was successful. The test can evaluate a
 #   login attempt in 3 different ways:
 #   * HTTP_Statuscode: The test can match the HTTP Statuscode that it receives when logging in against one that is provided here.
@@ -17,8 +19,14 @@
 #   * Content: The test can match the HTML code of the page it receives when it has attempted a login against a regex pattern that you
 #     provide. This allows you to specify the specific page that should shown when a login attempt is successful
 #   Note that the test will check all the criteria it finds here and will only accept a login attempt as successful when all criteria matches.
-# * The attributes that the SP requires in order to log in correctly. It should be specified by providing the attribute's name, its name
-#   format and its value. You can specify multiple attributes here by adding a new property line with an incremented number, e.g. "targetSP.idp.attribute.1"
+# 
+# * The attributes that the SP requires in order to log in correctly. It should be specified by providing the attribute's namespace, 
+#	namespace prefix, name, name format, friendly name and its value. If necessary, you can add any custom XML attributes afterwards by first 
+# 	specifying the attribute name (with namespace prefix)and then the value, 
+# 	e.g. "targetSP.idp.attribute.0=urn:oasis:names:tc:SAML:2.0:profiles:attribute:X500,x500,urn:oid:2.5.4.42,urn:oasis:names:tc:SAML:2.0:attrname-format:uri,givenName,dean,x500:Encoding,LDAP"
+# 	If no custom XML attributes are used, you can leave the namespace and prefix empty, e.g. "targetSP.idp.attribute.1=,,name,nameformat,friendlyname,value".
+# 	You can specify multiple SAML attributes here by adding a new property line with an incremented number, e.g. "targetSP.idp.attribute.1".  
+# 
 # * It might be necessary to interact with the web pages in order to log in correctly. These interactions can be specified here and it is 
 # 	possible to specify multiple successive interactions. There are 2 points in the login process where interaction could be required:
 #	* prelogin: This is the point where the start page of the SP is accessed but some interaction might be required in order to get the SP to 
@@ -35,15 +43,23 @@
 #	* link: You can specify a link that should be clicked by giving either its name, the (entire) text of the link or the path specified by the link.
 #	  You can do this by using "name", "text" or "href" as the first part of the property value, e.g. "targetSP.interaction.postresponse.link.0=href,anchorHref"
 #	  Similar to some other properties, you can specify multiple links creating an additional property line with an incremented number, e.g.
-#	  "targetSP.interaction.postresponse.link.1". 
+#	  "targetSP.interaction.postresponse.link.1".
 # 
-# This properties file should be used as the value for the -s or --spconfig parameter when running the SPTestRunner.
-targetSP.startPage=url
-targetSP.metadata=string
-targetSP.login.httpstatuscode=200
-targetSP.login.url=url
-targetSP.login.cookie.0=name,value
-targetSP.login.content=regex
-targetSP.idp.attribute.0=name,nameformat,value
-targetSP.interaction.prelogin.form.0=formname,submitname,inputname,inputvalue
-targetSP.interaction.postresponse.link.0=href,anchorHref
+# This JSON file should be used as the value for the -s or --spconfig parameter when running the SPTestRunner.
+{
+	startPage: "<url>",
+	metadata: "<string>",
+	loginStatuscode: 200,
+	loginURL: "<url>",
+	loginContent: "<regex>",
+	loginCookies: [ {name: "<name>", value: <value>} ],
+	attributes: [
+	{ namespace: "<namespace>", prefix: "<prefix>", attributeName: "<name>", nameFormat: "<nameformat>", friendlyName: "<friendlyname>", attributeValue: "<value>", customAttributes:[ { name: "<customname>", value: "<customvalue>" } ] }
+	],
+	preLoginInteractions: [
+		{ interactionType: "<form/link/element>", lookupAttribute: "<id/name/href/text>", lookupValue: "<value>" }
+	],
+	postResponseInteractions: [
+		{ interactionType: "<form/link/element>", lookupAttribute: "<id/name/href/text>", lookupValue: "<value>", submitName: "<name>", inputs: [ { name: "<inputname>", value: "<inputvalue>" } ] }
+	]
+}

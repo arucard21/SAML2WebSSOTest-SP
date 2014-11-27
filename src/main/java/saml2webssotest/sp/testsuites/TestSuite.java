@@ -1,16 +1,26 @@
-package saml2tester.sp.testsuites;
+package saml2webssotest.sp.testsuites;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.StringReader;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.KeyPair;
+import java.security.Security;
+import java.security.cert.CertificateException;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
+import java.security.interfaces.RSAPrivateKey;
 import java.util.List;
 import java.util.UUID;
 
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.openssl.PEMReader;
 import org.joda.time.DateTime;
 import org.opensaml.Configuration;
 import org.opensaml.DefaultBootstrap;
@@ -32,19 +42,22 @@ import org.opensaml.saml2.core.SubjectConfirmation;
 import org.opensaml.saml2.core.SubjectConfirmationData;
 import org.opensaml.saml2.core.impl.AttributeBuilder;
 import org.opensaml.xml.ConfigurationException;
+import org.opensaml.xml.Namespace;
 import org.opensaml.xml.XMLObjectBuilderFactory;
 import org.opensaml.xml.schema.XSString;
+import org.opensaml.xml.security.x509.BasicX509Credential;
+import org.opensaml.xml.security.x509.X509Credential;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
 
-import saml2tester.common.SAMLAttribute;
-import saml2tester.common.TestStatus;
-import saml2tester.common.standardNames.MD;
-import saml2tester.common.standardNames.SAMLmisc;
-import saml2tester.sp.LoginAttempt;
-import saml2tester.sp.SPConfiguration;
-import saml2tester.sp.SPTestRunner;
+import saml2webssotest.common.SAMLAttribute;
+import saml2webssotest.common.TestStatus;
+import saml2webssotest.common.standardNames.MD;
+import saml2webssotest.common.standardNames.SAMLmisc;
+import saml2webssotest.sp.LoginAttempt;
+import saml2webssotest.sp.SPConfiguration;
+import saml2webssotest.sp.SPTestRunner;
 
 /**
  * This is the module containing the abstract base classes that are required in every test suite, as well as any methods that 
@@ -134,9 +147,10 @@ public abstract class TestSuite {
 	 * 
 	 * @param certLocation contains the location of the certificate file that should be used (e.g. "keys/mycert.pem")
 	 * 			Can be null or empty, in which case a default certificate is used
-	 * @return: the X.509 Certificate in PEM format
+	 * @return: the X.509 Certificate credentials
 	 */
-	public String getIdPCertificate(String certLocation){
+	public X509Credential getX509Credentials(String certLocation){
+		BasicX509Credential credentials = new BasicX509Credential();
 		String cert = "";
 		
 		// if a specific certificate location is provided, use the certificate from that location
@@ -173,7 +187,23 @@ public abstract class TestSuite {
 					"+vffBGQ09mo+6CffuFTZYeOhzP/2stAPwCTU4kxEoiy0KpZMANI=\r\n" + 
 					"-----END CERTIFICATE-----";
 		}
-		return cert;
+		// retrieve the certificate
+		X509Certificate idpCert = null;
+		try {
+			idpCert = (X509Certificate) CertificateFactory.getInstance("X.509").generateCertificate(new ByteArrayInputStream(cert.getBytes()));
+		} catch (CertificateException e) {
+			e.printStackTrace();
+		}
+		if (idpCert == null){
+			return null;
+		}
+		else{
+			credentials.setEntityCertificate(idpCert);
+			credentials.setPublicKey(idpCert.getPublicKey());
+			credentials.setPrivateKey(getIdPPrivateKey(null));
+			
+			return credentials;
+		}
 	}
 
     /**
@@ -183,7 +213,8 @@ public abstract class TestSuite {
      * 			Can be null or empty, in which case a default private key is used 
      * @return: the RSA private key in PEM format
      */
-	public String getIdPPrivateKey(String keyLocation){
+	public RSAPrivateKey getIdPPrivateKey(String keyLocation){
+		RSAPrivateKey privateKey = null;
 		String key = "";
 		
 		// if a specific key location is provided, use the private key from that location
@@ -217,7 +248,20 @@ public abstract class TestSuite {
 					"JStVibemTRCbxdXXM7OVipz1oW3PBVEO3t/VyjiaGGg=\r\n" + 
 					"-----END RSA PRIVATE KEY-----";
 		}
-		return key;
+		
+		try {
+			BufferedReader br = new BufferedReader(new StringReader(key));
+			Security.addProvider(new BouncyCastleProvider());
+			PEMReader pr = new PEMReader(br);
+			KeyPair kp = (KeyPair) pr.readObject();
+			pr.close();
+			br.close();
+			privateKey = (RSAPrivateKey) kp.getPrivate();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		
+		return privateKey;
 	}
 	
 	/**
@@ -317,10 +361,24 @@ public abstract class TestSuite {
 		for (SAMLAttribute attr : attributes){
 			// build the attribute
 			org.opensaml.saml2.core.Attribute attribute = attrbuilder.buildObject();
+			// add the namespace for the attribute (remains unchanged if namespace already in use)
+			attribute.getNamespaceManager().getNamespaces().add(new Namespace(attr.getNamespace(), attr.getPrefix()));
 			// set the name to the attribute name that was configured for the target SP
 			attribute.setName(attr.getAttributeName());
-			// same for the nameformat
+			// set the nameformat that was configured for the target SP
 			attribute.setNameFormat(attr.getNameFormat());
+			// set the friendly name that was configured for the target SP
+			attribute.setFriendlyName(attr.getFriendlyName());
+			// add any additional custom attributes
+			/*HashMap<String, String> customattrs = attr.getCustomAttributes();
+			for(Map.Entry<String, String> customattr : customattrs.entrySet()){
+				if (!attr.getNamespace().isEmpty() && !attr.getPrefix().isEmpty()){
+					attribute.getUnknownAttributes().put(new QName(attr.getNamespace(), customattr.getKey(), attr.getPrefix()), customattr.getValue());
+				}
+				else{
+					logger.error("Custom attributes are configured for the SAML Attributes, but no custom namespace and prefix were given");
+				}
+			}*/
 			// create the AttributeValue node, which is the same as xs:any but with the AttributeValue tag name
 			XSString attrval = (XSString) builderfac.getBuilder(XSString.TYPE_NAME).buildObject(AttributeValue.DEFAULT_ELEMENT_NAME, XSString.TYPE_NAME);
 			// set the value of the AttributeValue

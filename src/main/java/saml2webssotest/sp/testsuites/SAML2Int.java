@@ -1,4 +1,4 @@
-package saml2tester.sp.testsuites;
+package saml2webssotest.sp.testsuites;
 
 import java.io.IOException;
 import java.net.MalformedURLException;
@@ -18,9 +18,13 @@ import org.opensaml.saml2.core.Response;
 import org.opensaml.saml2.core.SubjectConfirmation;
 import org.opensaml.saml2.metadata.EntityDescriptor;
 import org.opensaml.saml2.metadata.IDPSSODescriptor;
+import org.opensaml.saml2.metadata.KeyDescriptor;
 import org.opensaml.saml2.metadata.SingleSignOnService;
 import org.opensaml.xml.ConfigurationException;
 import org.opensaml.xml.XMLObjectBuilderFactory;
+import org.opensaml.xml.security.credential.UsageType;
+import org.opensaml.xml.security.keyinfo.KeyInfoGenerator;
+import org.opensaml.xml.security.x509.X509KeyInfoGeneratorFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
@@ -29,23 +33,23 @@ import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
 
-import saml2tester.common.SAMLAttribute;
-import saml2tester.common.SAMLUtil;
-import saml2tester.common.TestStatus;
-import saml2tester.common.standardNames.MD;
-import saml2tester.common.standardNames.SAML;
-import saml2tester.common.standardNames.SAMLP;
-import saml2tester.common.standardNames.SAMLmisc;
-import saml2tester.sp.LoginAttempt;
-import saml2tester.sp.SPConfiguration;
-import saml2tester.sp.SPTestRunner;
+import saml2webssotest.common.SAMLAttribute;
+import saml2webssotest.common.SAMLUtil;
+import saml2webssotest.common.TestStatus;
+import saml2webssotest.common.standardNames.MD;
+import saml2webssotest.common.standardNames.SAML;
+import saml2webssotest.common.standardNames.SAMLP;
+import saml2webssotest.common.standardNames.SAMLmisc;
+import saml2webssotest.sp.LoginAttempt;
+import saml2webssotest.sp.SPConfiguration;
+import saml2webssotest.sp.SPTestRunner;
 
 
 public class SAML2Int extends TestSuite {
 	/**
 	 * Logger for this class
 	 */
-	private final Logger logger = LoggerFactory.getLogger(SPTestRunner.class);
+	private final Logger logger = LoggerFactory.getLogger(SAML2Int.class);
 	
 	@Override
 	public String getMockIdPProtocol() {
@@ -83,12 +87,24 @@ public class SAML2Int extends TestSuite {
 		EntityDescriptor ed = (EntityDescriptor) xmlbuilderfac.getBuilder(EntityDescriptor.DEFAULT_ELEMENT_NAME).buildObject(EntityDescriptor.DEFAULT_ELEMENT_NAME);
 		IDPSSODescriptor idpssod = (IDPSSODescriptor) xmlbuilderfac.getBuilder(IDPSSODescriptor.DEFAULT_ELEMENT_NAME).buildObject(IDPSSODescriptor.DEFAULT_ELEMENT_NAME);
 		SingleSignOnService ssos = (SingleSignOnService) xmlbuilderfac.getBuilder(SingleSignOnService.DEFAULT_ELEMENT_NAME).buildObject(SingleSignOnService.DEFAULT_ELEMENT_NAME);
+		KeyDescriptor keydescriptor = (KeyDescriptor) xmlbuilderfac.getBuilder(KeyDescriptor.DEFAULT_ELEMENT_NAME).buildObject(KeyDescriptor.DEFAULT_ELEMENT_NAME);
 		
 		ssos.setBinding(SAMLmisc.BINDING_HTTP_REDIRECT);
 		ssos.setLocation(getMockIdPURL());
-		
+
+		X509KeyInfoGeneratorFactory keyInfoGeneratorFactory = new X509KeyInfoGeneratorFactory();
+		keyInfoGeneratorFactory.setEmitEntityCertificate(true);
+		KeyInfoGenerator keyInfoGenerator = keyInfoGeneratorFactory.newInstance();
+		try {
+			keydescriptor.setKeyInfo(keyInfoGenerator.generate(getX509Credentials(null)));
+		} catch (org.opensaml.xml.security.SecurityException e) {
+			e.printStackTrace();
+		}
+		keydescriptor.setUse(UsageType.SIGNING);
+		 
 		idpssod.addSupportedProtocol(SAMLmisc.SAML20_PROTOCOL);
 		idpssod.getSingleSignOnServices().add(ssos);
+		idpssod.getKeyDescriptors().add(keydescriptor);
 		
 		ed.setEntityID(getmockIdPEntityID());
 		ed.getRoleDescriptors().add(idpssod);
@@ -448,7 +464,7 @@ public class SAML2Int extends TestSuite {
 						}
 						// add the attributes
 						addTargetSPAttributes(assertion);
-						SAMLUtil.sign(assertion, getIdPPrivateKey(null), getIdPCertificate(null));
+						SAMLUtil.sign(assertion, getX509Credentials(null));
 					}
 					// add the InReplyTo attribute to the Response as well
 					responseTransient.setInResponseTo(requestID);
@@ -487,7 +503,7 @@ public class SAML2Int extends TestSuite {
 						}
 						// add the attributes
 						addTargetSPAttributes(assertion);
-						SAMLUtil.sign(assertion, getIdPPrivateKey(null), getIdPCertificate(null));
+						SAMLUtil.sign(assertion, getX509Credentials(null));
 					}
 					// add the InReplyTo attribute to the Response as well
 					responsePersistent.setInResponseTo(requestID);
@@ -577,7 +593,7 @@ public class SAML2Int extends TestSuite {
 
 						// add the attributes
 						addTargetSPAttributes(assertion);
-						SAMLUtil.sign(assertion, getIdPPrivateKey(null), getIdPCertificate(null));
+						SAMLUtil.sign(assertion, getX509Credentials(null));
 					}
 					// add the InReplyTo attribute to the Response as well
 
@@ -609,7 +625,7 @@ public class SAML2Int extends TestSuite {
 	 * @author RiaasM
 	 *
 	 */
-	public class ConfigAttrNameFormat implements ConfigTestCase{
+	public class ConfigAttrNameFormatURI implements ConfigTestCase{
 		private String successMessage;
 		private String failedMessage;
 	
@@ -1393,5 +1409,425 @@ public class SAML2Int extends TestSuite {
 			}
 			return TestStatus.OK;
 		}	
+	}
+
+	/**
+	 * Tests the following part of the following part of the SAML2Int Profile:
+	 * 		The use of LDAP/X.500 attributes and the LDAP/X.500 attribute profile [X500SAMLattr] is RECOMMENDED where possible.
+	 * 
+	 * @author RiaasM
+	 *
+	 */
+	public class ConfigAttrLDAP implements ConfigTestCase{
+		private String successMessage;
+		private String failedMessage;
+
+		@Override
+		public String getDescription() {
+			return "Test if the attributes that are configured are using the LDAP/X.500 profile (RECOMMENDATION)";
+		}
+
+		@Override
+		public String getSuccessMessage() {
+			return successMessage;
+		}
+	
+		@Override
+		public String getFailedMessage() {
+			return failedMessage;
+		}
+	
+		@Override
+		public TestStatus checkConfig(SPConfiguration config) {
+			ArrayList<SAMLAttribute> attrs = config.getAttributes();
+			if (attrs.size() == 0){
+				successMessage = "No attributes were configured so this test case doesn't apply";
+				return TestStatus.OK;
+			}
+			else{
+				// make sure all attributes use the LDAP/X.500 profile
+				for (SAMLAttribute attr : attrs){
+					// check if the LDAP/X.500 namespace is used
+					if(!attr.getNamespace().equals(SAMLmisc.NAMESPACE_ATTR_X500)){
+						// be more specific in the failed test's message, so it's easier to know what went wrong
+						failedMessage = "The configured SAML attribute does not use the LDAP/X.500 attribute profile";
+						return TestStatus.WARNING;
+					}
+					// check if the LDAP/X.500 Encoding attribute is supplied, and if so, if the correct value is filled in
+					/*if (attr.getCustomAttributes().keySet().contains(SAMLmisc.X500_ENCODING)){
+						if (!attr.getCustomAttributes().get(SAMLmisc.X500_ENCODING).equals(SAMLmisc.X500_ENCODING_LDAP)){
+							failedMessage = "The configured SAML attribute has an Encoding attribute with a value other than 'LDAP'";
+							return TestStatus.WARNING;
+						}
+					}*/
+				}
+				successMessage = "The attributes that are configured are using the LDAP/X.500 profile";
+				return TestStatus.OK;
+			}
+		}
+	}
+
+	/**
+	 * Tests the following part of the SAML2Int Profile:
+	 *  	The use of LDAP/X.500 attributes and the LDAP/X.500 attribute profile [X500SAMLattr] is RECOMMENDED where possible.
+	 * 
+	 * @author RiaasM
+	 *
+	 */
+	public class MetadataAttrLDAP implements MetadataTestCase {
+		private String successMessage;
+		private String failedMessage;
+		
+		@Override
+		public String getDescription() {
+			return "Test if the attributes that are requested in the Service Provider's metadata are using the LDAP/X.500 profile (RECOMMENDATION)";
+		}
+	
+		@Override
+		public String getSuccessMessage() {
+			return successMessage;
+		}
+	
+		@Override
+		public String getFailedMessage() {
+			return failedMessage;
+		}
+
+		@Override
+		public TestStatus checkMetadata(Document metadata) {
+			if(metadata == null){
+				failedMessage = "The test case could not be performed because there was no metadata available";
+				return TestStatus.CRITICAL;
+			}
+			
+			NodeList attrs = metadata.getElementsByTagNameNS(MD.NAMESPACE, SAML.ATTRIBUTE);
+			
+			if (attrs.getLength() == 0){
+				successMessage = "The Service Provider's metadata contains no attributes, so the test case does not apply";
+				return TestStatus.OK;
+			}
+			
+			// make sure all attributes use the LDAP/X.500 profile
+			for (int i = 0; i < attrs.getLength(); i++){
+				Node attr = attrs.item(i);
+				
+				// check if the LDAP/X.500 namespace is used
+				if(!attr.getNamespaceURI().equals(SAMLmisc.NAMESPACE_ATTR_X500)){
+					// be more specific in the failed test's message, so it's easier to know what went wrong
+					failedMessage = "A configured SAML attribute does not use the LDAP/X.500 attribute profile";
+					return TestStatus.WARNING;
+				}
+				// check if the LDAP/X.500 Encoding attribute is supplied, and if so, if the correct value is filled in
+				Node x500Enc = attr.getAttributes().getNamedItemNS(SAMLmisc.NAMESPACE_ATTR_X500, SAMLmisc.X500_ENCODING);
+				if (x500Enc != null){
+					if (!x500Enc.getNodeValue().equals(SAMLmisc.X500_ENCODING_LDAP)){
+						failedMessage = "A configured SAML attribute has an x500:Encoding attribute with a value other than 'LDAP'";
+						return TestStatus.WARNING;
+					}
+				}
+			}
+			successMessage = "The attributes that are configured are using the LDAP/X.500 profile";
+			return TestStatus.OK;
+		}
+		
+	}
+
+	/**
+	 * Tests the following part of the following part of the SAML2Int Profile:
+	 * 		It is RECOMMENDED that the content of <saml2:AttributeValue> elements exchanged via any SAML 2.0 messages, assertions, 
+	 * 		or metadata be limited to a single child text node (i.e., a simple string value).
+	 * 
+	 * @author RiaasM
+	 *
+	 */
+	public class ConfigAttrValueSimple implements ConfigTestCase{
+		private String successMessage;
+		private String failedMessage;
+	
+		@Override
+		public String getDescription() {
+			return "Test if the attributes that are configured have simple string values (RECOMMENDATION)";
+		}
+	
+		@Override
+		public String getSuccessMessage() {
+			return successMessage;
+		}
+	
+		@Override
+		public String getFailedMessage() {
+			return failedMessage;
+		}
+	
+		@Override
+		public TestStatus checkConfig(SPConfiguration config) {
+			ArrayList<SAMLAttribute> attrs = config.getAttributes();
+			if (attrs.size() == 0){
+				successMessage = "No attributes were configured so this test case doesn't apply";
+				return TestStatus.OK;
+			}
+			else{
+				// make sure all attributes use the LDAP/X.500 profile
+				for (SAMLAttribute attr : attrs){
+					// check if the attribute contains XML instead of a simple string value
+					if(attr.getAttributeValue().startsWith("<")){
+						// be more specific in the failed test's message, so it's easier to know what went wrong
+						failedMessage = "The configured SAML attribute does not have a simple string value";
+						return TestStatus.WARNING;
+					}
+				}
+				successMessage = "The attributes that are configured have simple string values";
+				return TestStatus.OK;
+			}
+		}
+	}
+
+	/**
+	 * Tests the following part of the SAML2Int Profile:
+	 *  	It is RECOMMENDED that the content of <saml2:AttributeValue> elements exchanged via any SAML 2.0 messages, assertions, 
+	 *  	or metadata be limited to a single child text node (i.e., a simple string value).
+	 * 
+	 * @author RiaasM
+	 *
+	 */
+	public class MetadataAttrValueSimple implements MetadataTestCase {
+		private String successMessage;
+		private String failedMessage;
+		
+		@Override
+		public String getDescription() {
+			return "Test if the attributes that are requested in the Service Provider's metadata have simple string values (RECOMMENDATION)";
+		}
+	
+		@Override
+		public String getSuccessMessage() {
+			return successMessage;
+		}
+	
+		@Override
+		public String getFailedMessage() {
+			return failedMessage;
+		}
+	
+		@Override
+		public TestStatus checkMetadata(Document metadata) {
+			if(metadata == null){
+				failedMessage = "The test case could not be performed because there was no metadata available";
+				return TestStatus.CRITICAL;
+			}
+			
+			NodeList attrvals = metadata.getElementsByTagNameNS(MD.NAMESPACE, SAML.ATTRIBUTEVALUE);
+			
+			if (attrvals.getLength() == 0){
+				successMessage = "The Service Provider's metadata contains no attributes, so the test case does not apply";
+				return TestStatus.OK;
+			}
+			
+			// make sure all attributes use the LDAP/X.500 profile
+			for (int i = 0; i < attrvals.getLength(); i++){
+				Node attrval = attrvals.item(i);
+				
+				// check if the AttributeValue element has only a single child text node
+				if(attrval.getChildNodes().getLength() == 1 && attrval.getChildNodes().item(0).getNodeType() == Node.TEXT_NODE){
+					// be more specific in the failed test's message, so it's easier to know what went wrong
+					failedMessage = "A configured SAML attribute does not have simple string values";
+					return TestStatus.WARNING;
+				}
+			}
+			successMessage = "The attributes that are configured have simple string values";
+			return TestStatus.OK;
+		}
+		
+	}
+
+	/**
+	 * Tests the following part of the SAML2Int Profile: 
+	 * 		It is OPTIONAL to apply any form of URL canonicalization, which means the Service Provider SHOULD NOT rely on differently 
+	 * 		canonicalized values in these two locations [refers to the ACSURL of the request and the Location of the ACS element in 
+	 * 		the SP metadata]. As an example, the Service Provider SHOULD NOT use a hostname with port number (such as 
+	 * 		https://sp.example.no:80/acs) in its request and without (such as https://sp.example.no/acs) in its metadata.
+	 * @author RiaasM
+	 *
+	 */
+	public class RequestACSURLCanonicalization implements RequestTestCase{
+		private String failedMessage; 
+	
+		@Override
+		public String getDescription() {
+			return "Test if the Service Provider's Authentication Request's AssertionConsumerServiceURL attribute uses the same canonicalization as in the Service Provider's metadata (SHOULD requirement)";
+		}
+
+		@Override
+		public String getSuccessMessage() {
+			return "The Service Provider's Authentication Request's AssertionConsumerServiceURL attribute uses the same canonicalization as in the Service Provider's metadata";
+		}
+
+		@Override
+		public String getFailedMessage() {
+			return failedMessage;
+		}
+	
+		@Override
+		public TestStatus checkRequest(String request, String binding) {
+			Node acsURL = SAMLUtil.fromXML(request).getDocumentElement().getAttributes().getNamedItem(SAMLP.ASSERTIONCONSUMERSERVICEURL);
+			if (acsURL != null){
+				NodeList acss = SPTestRunner.getSPConfig().getMetadata().getElementsByTagNameNS(MD.NAMESPACE, MD.ASSERTIONCONSUMERSERVICE);
+				// check if acsURL is available as location in the list of acs's 
+				// when comparing the URL's directly as strings without compensating for canonicalization 
+				for (int i = 0; i < acss.getLength(); i++){
+					if (acss.item(i).getAttributes().getNamedItem(MD.LOCATION).getNodeValue().equals(acsURL.getNodeValue()))
+						return TestStatus.OK;
+				}
+				failedMessage = "The Service Provider's Authentication Request's AssertionConsumerServiceURL attribute did not use the same canonicalization as in the Service Provider's metadata";
+				return TestStatus.WARNING;
+			}
+			else{
+				failedMessage = "The Service Provider's Authentication Request's AssertionConsumerServiceURL attribute was not available";
+				return TestStatus.CRITICAL;
+			}
+		}
+	}
+
+	/**
+	 * Tests the following part of the SAML2Int Profile: 
+	 * 		The <saml2p:AuthnRequest> message SHOULD contain a <saml2p:NameIDPolicy> element with an AllowCreate attribute of "true". 
+	 * @author RiaasM
+	 *
+	 */
+	public class RequestNameIDPolicy implements RequestTestCase{
+		private String failedMessage; 
+	
+		@Override
+		public String getDescription() {
+			return "Test if the Service Provider's Authentication Request contains a NameIDPolicy with an AllowCreate attribute of true (SHOULD requirement)";
+		}
+	
+		@Override
+		public String getSuccessMessage() {
+			return "The Service Provider's Authentication Request contains a NameIDPolicy with an AllowCreate attribute of true";
+		}
+	
+		@Override
+		public String getFailedMessage() {
+			return failedMessage;
+		}
+	
+		@Override
+		public TestStatus checkRequest(String request, String binding) {
+			NodeList nameIDPolicies = SAMLUtil.fromXML(request).getElementsByTagNameNS(SAMLP.NAMESPACE, SAMLP.NAMEIDPOLICY);
+			// check if the request has any NameIDPolicy elements
+			if (nameIDPolicies.getLength() == 0){
+				failedMessage = "The Service Provider's Authentication Request does not contain a NameIDPolicy";
+				return TestStatus.WARNING;
+			}
+			// check if at least one of the NameIDPolicy elements has an AllowCreate attribute of true
+			boolean found = false;
+			for (int i = 0; i < nameIDPolicies.getLength(); i++){
+				Node allowcreate = nameIDPolicies.item(i).getAttributes().getNamedItem(SAMLP.ALLOWCREATE);
+				if (allowcreate != null && allowcreate.getNodeValue().equalsIgnoreCase("true"))
+					found = true;
+			}
+			if (found){
+				return TestStatus.OK;
+			}
+			else{
+				failedMessage = "The Service Provider's Authentication Request does not contain a NameIDPolicy with an AllowCreate attribute of true";
+				return TestStatus.WARNING;
+			}
+			
+		}
+	}
+
+	/**
+	 * Tests the following part of the SAML2Int Profile: 
+	 * 		Its [refers to the NameIDPolicy element] Format attribute, if present, SHOULD be set to one of the following values: 
+	 * 		urn:oasis:names:tc:SAML:2.0:nameid-format:persistent
+	 * 		urn:oasis:names:tc:SAML:2.0:nameid-format:transient
+	 * @author RiaasM
+	 *
+	 */
+	public class RequestNameIDPolicyFormat implements RequestTestCase{
+		private String failedMessage; 
+	
+		@Override
+		public String getDescription() {
+			return "Test if the Service Provider's Authentication Request's NameIDPolicy elements have a Format attribute that is either "+SAMLmisc.NAMEID_FORMAT_TRANSIENT+" nor "+SAMLmisc.NAMEID_FORMAT_PERSISTENT+", if present";
+		}
+	
+		@Override
+		public String getSuccessMessage() {
+			return "The Service Provider's Authentication Request's NameIDPolicy elements have a valid Format attribute value";
+		}
+	
+		@Override
+		public String getFailedMessage() {
+			return failedMessage;
+		}
+	
+		@Override
+		public TestStatus checkRequest(String request, String binding) {
+			NodeList nameIDPolicies = SAMLUtil.fromXML(request).getElementsByTagNameNS(SAMLP.NAMESPACE, SAMLP.NAMEIDPOLICY);
+			// check if the request has any NameIDPolicy elements
+			if (nameIDPolicies.getLength() == 0){
+				failedMessage = "The Service Provider's Authentication Request does not contain a NameIDPolicy";
+				return TestStatus.WARNING;
+			}
+			// check if all NameIDPolicy elements either have a transient or persistent format attribute, or no format attribute at all
+			for (int i = 0; i < nameIDPolicies.getLength(); i++){
+				Node format = nameIDPolicies.item(i).getAttributes().getNamedItem(SAMLmisc.FORMAT);
+				if (format != null){
+					if (!format.getNodeValue().equalsIgnoreCase(SAMLmisc.NAMEID_FORMAT_TRANSIENT) && !format.getNodeValue().equalsIgnoreCase(SAMLmisc.NAMEID_FORMAT_PERSISTENT)){
+						failedMessage = "The Service Provider's Authentication Request contains a NameIDPolicy with a Format attribute that is neither "+SAMLmisc.NAMEID_FORMAT_TRANSIENT+" nor "+SAMLmisc.NAMEID_FORMAT_PERSISTENT;
+						return TestStatus.WARNING;
+					}
+				}
+			}	
+			return TestStatus.OK;
+		}
+	}
+
+	/**
+	 * Tests the following part of the SAML2Int Profile: 
+	 * 		The <saml2p:AuthnRequest> message MAY contain a <saml2p:RequestedAuthnContext> element ... The Comparison attribute 
+	 * 		SHOULD be omitted or be set to "exact". 
+	 * @author RiaasM
+	 *
+	 */
+	public class RequestRequestedAuthnContext implements RequestTestCase{
+		private String successMessage = "The Service Provider's Authentication Request contains a RequestedAuthnContext with a Comparison attribute that is set to exact or omitted";
+		
+		@Override
+		public String getDescription() {
+			return "Test if the Service Provider's Authentication Request contains a RequestedAuthnContext with a Comparison attribute that is set to exact or omitted (SHOULD requirement)";
+		}
+	
+		@Override
+		public String getSuccessMessage() {
+			return successMessage;
+		}
+	
+		@Override
+		public String getFailedMessage() {
+			return "The Service Provider's Authentication Request contains a RequestedAuthnContext with a Comparison attribute that is not set to exact";
+		}
+	
+		@Override
+		public TestStatus checkRequest(String request, String binding) {
+			NodeList requestedAuthnContexts = SAMLUtil.fromXML(request).getElementsByTagNameNS(SAMLP.NAMESPACE, SAMLP.REQUESTEDAUTHNCONTEXT);
+			if (requestedAuthnContexts.getLength() == 0){
+				successMessage = "There are no RequestedAuthnContext elements in the request so this test case does not apply";
+				return TestStatus.OK;
+			}
+			// check if all RequestedAuthnContext elements have an exact Comparison attribute, or no Comparison attribute at all
+			for (int i = 0; i < requestedAuthnContexts.getLength(); i++){
+				Node comparison = requestedAuthnContexts.item(i).getAttributes().getNamedItem(SAMLP.COMPARISON);
+				if (comparison != null){
+					if (!comparison.getNodeValue().equals(SAMLP.COMPARISON_EXACT)){
+						return TestStatus.WARNING;
+					}
+				}
+			}
+			return TestStatus.OK;
+		}
 	}
 }

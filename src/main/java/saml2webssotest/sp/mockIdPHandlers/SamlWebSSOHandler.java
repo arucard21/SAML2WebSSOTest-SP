@@ -1,4 +1,4 @@
-package saml2tester.sp.mockIdPHandlers;
+package saml2webssotest.sp.mockIdPHandlers;
 
 import java.io.IOException;
 
@@ -12,9 +12,9 @@ import org.eclipse.jetty.server.handler.AbstractHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import saml2tester.common.SAMLUtil;
-import saml2tester.common.standardNames.SAMLmisc;
-import saml2tester.sp.SPTestRunner;
+import saml2webssotest.common.SAMLUtil;
+import saml2webssotest.common.standardNames.SAMLmisc;
+import saml2webssotest.sp.SPTestRunner;
 
 public class SamlWebSSOHandler extends AbstractHandler{
 	

@@ -1,18 +1,15 @@
-package saml2tester.sp;
+package saml2webssotest.sp;
 
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -38,27 +35,27 @@ import com.gargoylesoftware.htmlunit.HttpMethod;
 import com.gargoylesoftware.htmlunit.Page;
 import com.gargoylesoftware.htmlunit.WebClient;
 import com.gargoylesoftware.htmlunit.WebRequest;
-import com.gargoylesoftware.htmlunit.html.HtmlAnchor;
-import com.gargoylesoftware.htmlunit.html.HtmlForm;
-import com.gargoylesoftware.htmlunit.html.HtmlInput;
 import com.gargoylesoftware.htmlunit.html.HtmlPage;
-import com.gargoylesoftware.htmlunit.html.HtmlSubmitInput;
 import com.gargoylesoftware.htmlunit.util.Cookie;
 import com.gargoylesoftware.htmlunit.util.NameValuePair;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonSyntaxException;
 
-import saml2tester.common.FormInteraction;
-import saml2tester.common.LinkInteraction;
-import saml2tester.common.SAMLUtil;
-import saml2tester.common.TestResult;
-import saml2tester.common.TestStatus;
-import saml2tester.common.standardNames.SAMLmisc;
-import saml2tester.sp.mockIdPHandlers.SamlWebSSOHandler;
-import saml2tester.sp.testsuites.TestSuite;
-import saml2tester.sp.testsuites.TestSuite.ConfigTestCase;
-import saml2tester.sp.testsuites.TestSuite.LoginTestCase;
-import saml2tester.sp.testsuites.TestSuite.MetadataTestCase;
-import saml2tester.sp.testsuites.TestSuite.RequestTestCase;
-import saml2tester.sp.testsuites.TestSuite.TestCase;
+import saml2webssotest.common.Interaction;
+import saml2webssotest.common.FormInteraction;
+import saml2webssotest.common.LinkInteraction;
+import saml2webssotest.common.StringPair;
+import saml2webssotest.common.SAMLUtil;
+import saml2webssotest.common.TestResult;
+import saml2webssotest.common.TestStatus;
+import saml2webssotest.common.standardNames.SAMLmisc;
+import saml2webssotest.sp.mockIdPHandlers.SamlWebSSOHandler;
+import saml2webssotest.sp.testsuites.TestSuite;
+import saml2webssotest.sp.testsuites.TestSuite.ConfigTestCase;
+import saml2webssotest.sp.testsuites.TestSuite.LoginTestCase;
+import saml2webssotest.sp.testsuites.TestSuite.MetadataTestCase;
+import saml2webssotest.sp.testsuites.TestSuite.RequestTestCase;
+import saml2webssotest.sp.testsuites.TestSuite.TestCase;
 
 /**
  * This is the main class that is used to run the SP test. It will handle the
@@ -170,10 +167,15 @@ public class SPTestRunner {
 
 					// load target SP config
 					if (command.hasOption("spconfig")) {
-						spConfig = new SPConfiguration(command.getOptionValue("spconfig"));
+						spConfig = new GsonBuilder()
+											.registerTypeAdapter(Document.class, new DocumentDeserializer())
+											.registerTypeAdapter(Interaction.class, new InteractionDeserializer())
+											.create()
+											.fromJson(Files.newBufferedReader(Paths.get(command.getOptionValue("spconfig")),Charset.defaultCharset()), SPConfiguration.class); 
+						//new SPConfiguration(command.getOptionValue("spconfig"));
 					} else {
-						// use default, empty SP configuration
-						spConfig = new SPConfiguration(null);
+						// use empty SP configuration
+						spConfig = new SPConfiguration();
 					}
 
 					// create the mock IdP and add all required handlers
@@ -210,7 +212,8 @@ public class SPTestRunner {
 							TestResult result = new TestResult(status, message);
 							result.setName(testcase.getClass().getSimpleName());
 							result.setDescription(testcase.getDescription());
-							testresults.add(result);
+							outputTestResult(result);
+							//testresults.add(result);
 						} else {
 							logger.error("Provided class was not a subclass of interface TestCase");
 						}
@@ -231,11 +234,12 @@ public class SPTestRunner {
 							TestResult result = new TestResult(status, message);
 							result.setName(curTestcase.getClass().getSimpleName());
 							result.setDescription(curTestcase.getDescription());
-							testresults.add(result);
+							outputTestResult(result);
+							//testresults.add(result);
 						}
 					}
 					// handle test result(s)
-					outputTestResult(testresults);
+					//outputTestResult(testresults);
 				} else {
 					logger.error("Provided class was not a TestSuite");
 				}
@@ -265,12 +269,14 @@ public class SPTestRunner {
 			logger.error("Could not retrieve the constructor of the test case class", e);
 		} catch (SecurityException e) {
 			logger.error("Could not retrieve the constructor of the test case class", e);
+		} catch (JsonSyntaxException jsonExc) {
+			logger.error("The JSON configuration file did not have the correct syntax", jsonExc);
 		} catch (Exception e) {
 			logger.error("The test(s) could not be run", e);
 		} finally {
 			// stop the mock IdP
 			try {
-				if (mockIdP.isStarted()){
+				if (mockIdP!= null && mockIdP.isStarted()){
 					mockIdP.stop();
 				}
 			} catch (Exception e) {
@@ -482,11 +488,11 @@ public class SPTestRunner {
 						}
 					}
 					// check the cookies
-					if (spConfig.getLoginCookies().isEmpty()) {
+					if (spConfig.getLoginCookies().size() <= 0) {
 						// do not check cookies
 						cookiesMatch = true;
 					} else {
-						HashMap<String, String> checkCookies = spConfig.getLoginCookies();
+						ArrayList<StringPair> checkCookies = spConfig.getLoginCookies();
 						Set<Cookie> sessionCookies = browser.getCookies(acsURL);
 						// initialize the match to true and set it to false if we can't match a cookie
 						cookiesMatch = true;
@@ -494,8 +500,8 @@ public class SPTestRunner {
 						if (checkCookies.size() > 0){
 							boolean found = false;
 							// check if each user-supplied cookie name and value is available
-							for (Entry<String, String> checkCookie : checkCookies.entrySet()) {
-								String name = checkCookie.getKey();
+							for (StringPair checkCookie : checkCookies) {
+								String name = checkCookie.getName();
 								String value = checkCookie.getValue();
 								// iterate through the session cookies to see if it contains the the checked cookie
 								for (Cookie sessionCookie : sessionCookies) {
@@ -517,7 +523,7 @@ public class SPTestRunner {
 								}
 								// this cookie could not be found, so we could not find a match
 								if (!found){
-									logger.debug("Could not match the following cookie against the returned page:\n"+checkCookie.getKey()+", "+checkCookie.getValue());
+									logger.debug("Could not match the following cookie against the returned page:\n"+checkCookie.getName()+", "+checkCookie.getValue());
 									cookiesMatch = false;
 									break;
 								}
@@ -537,8 +543,13 @@ public class SPTestRunner {
 					browser.closeAllWindows();
 				} catch (ClientProtocolException e) {
 					logger.error("Could not execute HTTP request for the LoginTestCase", e);
-				} catch (IOException e) {
+					return null;
+				}catch (FailingHttpStatusCodeException e){
+					logger.error("Could not retrieve browser page for the LoginTestCase", e);
+					return null;
+				}catch (IOException e) {
 					logger.error("Could not execute HTTP request for the LoginTestCase", e);
+					return null;
 				}
 			}
 			/**
@@ -570,9 +581,9 @@ public class SPTestRunner {
 				Page retrievedPage = browser.getPage(loginURL);
 	
 				// interact with the login page in order to get logged in
-				ArrayList<Object> interactions = spConfig.getPreloginInteractions();
+				ArrayList<Interaction> interactions = spConfig.getPreLoginInteractions();
 				// execute all interactions
-				for(Object interaction : interactions){
+				for(Interaction interaction : interactions){
 					if(retrievedPage instanceof HtmlPage){
 						// cast the Page to an HtmlPage so we can interact with it
 						HtmlPage loginPage = (HtmlPage) retrievedPage;
@@ -581,12 +592,13 @@ public class SPTestRunner {
 					
 						// cast the interaction to the correct class
 						if(interaction instanceof FormInteraction) {
-							FormInteraction forminteraction = (FormInteraction) interaction;
-							HtmlForm preLoginForm = loginPage.getFormByName(forminteraction.getFormName());
-							HtmlSubmitInput button = preLoginForm.getInputByName(forminteraction.getSubmitName());
+							FormInteraction formInteraction = (FormInteraction) interaction;
+							/*
+							HtmlForm preLoginForm = loginPage.getFormByName(formInteraction.getFormName());
+							HtmlSubmitInput button = preLoginForm.getInputByName(formInteraction.getSubmitName());
 							
 							// fill in all provided input fields
-							HashMap<String, String> inputs = forminteraction.getInputs();
+							HashMap<String, String> inputs = formInteraction.getInputs();
 							for(Map.Entry<String, String> input: inputs.entrySet()){
 								// retrieve the first input field with the provided name
 								HtmlInput textField = preLoginForm.getInputsByName(input.getKey()).get(0);	
@@ -594,18 +606,22 @@ public class SPTestRunner {
 							}
 						    // submit the form, updating the retrieved page
 						    retrievedPage = button.click();
+						    */
+							retrievedPage = formInteraction.executeOnPage(loginPage);
+							
 						    logger.trace("Login page (after form submit)");
 						    logger.trace(loginPage.getWebResponse().getContentAsString());
 						}
 						else if(interaction instanceof LinkInteraction) {
-							LinkInteraction linkinteraction = (LinkInteraction) interaction;
-							String inputValue = linkinteraction.getLookupValue();
+							LinkInteraction linkInteraction = (LinkInteraction) interaction;
+							/*
+							String inputValue = linkInteraction.getLookupValue();
 							HtmlAnchor input;
-							if (linkinteraction.getLookupType() == LinkInteraction.LookupType.NAME)
+							if (linkInteraction.getLookupType() == LinkInteraction.String.NAME)
 								input = loginPage.getAnchorByName(inputValue);
-							else if (linkinteraction.getLookupType() == LinkInteraction.LookupType.TEXT)
+							else if (linkInteraction.getLookupType() == LinkInteraction.String.TEXT)
 								input = loginPage.getAnchorByText(inputValue);
-							else if (linkinteraction.getLookupType() == LinkInteraction.LookupType.HREF)
+							else if (linkInteraction.getLookupType() == LinkInteraction.String.HREF)
 								input = loginPage.getAnchorByHref(inputValue);
 							else{
 								logger.error("Unknown lookup type found in link interaction object");
@@ -613,12 +629,31 @@ public class SPTestRunner {
 							}
 							// click the link and update the retrieved page
 							if (input != null) retrievedPage = input.click();
+							*/
+							retrievedPage = linkInteraction.executeOnPage(loginPage);
 							
 							logger.trace("Login page (after link click)");
 						    logger.trace(retrievedPage.getWebResponse().getContentAsString());
 						}
-						else{
-							logger.error("Unknown interaction class found");
+						else {
+							/*
+							String inputValue = elementInteraction.getLookupValue();
+							HtmlElement targetElement;
+							if (elementInteraction.getLookupAttribute() == Interaction.LookupType.ID)
+								targetElement = loginPage.getHtmlElementById(inputValue);
+							else if (elementInteraction.getLookupAttribute() == Interaction.LookupType.NAME)
+								targetElement = loginPage.getElementByName(inputValue);
+							else{
+								logger.error("Unknown lookup type found in element interaction object");
+								targetElement = null;
+							}
+							// click the link and update the retrieved page
+							if (targetElement != null) retrievedPage = targetElement.click();
+							*/
+							retrievedPage = interaction.executeOnPage(loginPage);
+							
+							logger.trace("Login page (after element click)");
+						    logger.trace(retrievedPage.getWebResponse().getContentAsString());
 						}
 					}
 					else{
@@ -658,9 +693,9 @@ public class SPTestRunner {
 	 * @param testresult
 	 *            is the result of the test case that was run
 	 */
-	private static void outputTestResult(List<TestResult> testresults) {
+	private static void outputTestResult(TestResult testresult) {
 		// TODO maybe use a templating system to output nicely at some point, now just output to sysout
-		for (TestResult testresult : testresults) {
+		//for (TestResult testresult : testresults) {
 			String name = testresult.getName();
 			String message = testresult.getResultMessage();
 			TestStatus status = testresult.getResult();
@@ -673,7 +708,7 @@ public class SPTestRunner {
 				head = status + ":\t";
 			}
 			System.out.println(head + message + " (" + name + ")");
-		}
+		//}
 	}
 
 	/**
