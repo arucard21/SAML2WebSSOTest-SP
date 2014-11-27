@@ -25,7 +25,9 @@ Some additional useful commands are:
 - ```SAML2WebSSOTest.SP.SPTestRunner -L``` : Show a list of all available test suites 
 - ```SAML2WebSSOTest.SP.SPTestRunner -t <test suite> -l``` : Show a list of all available test cases in the given test suite
 
-Configuration:
+Configuration File:
+
+The configuration is stored in a `targetSP.json` file, which you can edit and keep in your current working directory.
 
 ```
 {
