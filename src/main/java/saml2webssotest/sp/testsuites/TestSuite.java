@@ -4,7 +4,6 @@ import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.StringReader;
-import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
@@ -83,55 +82,18 @@ public abstract class TestSuite {
 	private final Logger logger = LoggerFactory.getLogger(SPTestRunner.class);
 
 	/**
-	 * Retrieve the protocol on which the mock IdP should be available
-	 * 
-	 * @return the protocol on which the mock IdP should be available
-	 */
-	public abstract String getMockIdPProtocol();
-		
-	/**
-	 * Retrieve the URL on which the mock IdP should be available
-	 * 
-	 * @return the URL on which the mock IdP should be available
-	 */
-	public abstract String getMockIdPHostname();
-
-	/**
-	 * Retrieve the port on which the mock IdP should be available
-	 * 
-	 * @return the port on which the mock IdP should be available
-	 */
-	public abstract int getMockIdPPort();
-
-	/**
-	 * Retrieve the relative path on which the mock IdP should listen to SSO connections
-	 * 
-	 * @return the the relative path on which the mock IdP listens to SSO connections
-	 */
-	public abstract String getMockIdPSsoPath();
-
-	/**
 	 * Retrieves the EntityID for the mock IdP
 	 * 
 	 * @return the EntityID for the mock IdP
 	 */
 	public abstract String getmockIdPEntityID();
 
-	public String getMockIdPURL(){
-		URL mockIdPURL = null;
-		try {
-			mockIdPURL = new URL(getMockIdPProtocol(), getMockIdPHostname(), getMockIdPPort(), getMockIdPSsoPath());
-		} catch (MalformedURLException e) {
-			logger.error("The URL of the mock IdP was malformed", e);
-		}
-		
-		if(mockIdPURL != null){
-			return mockIdPURL.toString();
-		}
-		else{
-			return null;
-		}
-	}
+	/**
+	 * Retrieves the URL for the mock IdP
+	 * 
+	 * @return the URL for the mock IdP
+	 */
+	public abstract URL getMockIdPURL();
 	
 	/**
 	 * Get the IdP metadata that should be used in the mock IdP for this test suite.

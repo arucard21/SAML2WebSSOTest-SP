@@ -3,16 +3,20 @@ SAML2WebSSOTest-SP
 
 Framework for testing the Web SSO profile of SAML 2.0 SP entities, written in Java.
 
-This is currently functional and can be used to test SP's, although there aren't many tests written yet.
+You can run an existing test suite or create your own in the `saml2webssotest.testsuites` package. Currently, only a test suite for the SAML2Int (http://saml2int.org) profile is available. When you run the test(s), the test results are output in JSON format.
 
 Limitations:
+============
+
 - Artifact binding is not supported
-- output is only sent to the console, no formatting and templating options yet
 
 Prerequisites
+============
+
 - You need to have an SP available and you must be able to add IdP metadata to it as well as retrieve the SP's metadata.
 
 Usage:
+============
 
 1. Retrieve the mock IdP metadata by running SAML2WebSSOTest-SP with the parameters ```-t/--testsuite``` and ```-m/--metadata```, e.g ```java -jar SAML2WebSSOTest-SP -t SAML2Int" -m``` when running from JAR or ```SAML2WebSSOTest.SP.SPTestRunner -t SAML2Int -m``` when running in an IDE. This will retrieve the metadata for the test suite you specified with ```-t/--testsuite```
 2. Configure your SP to use the mock IdP's metadata
@@ -25,7 +29,8 @@ Some additional useful commands are:
 - ```SAML2WebSSOTest.SP.SPTestRunner -L``` : Show a list of all available test suites 
 - ```SAML2WebSSOTest.SP.SPTestRunner -t <test suite> -l``` : Show a list of all available test cases in the given test suite
 
-Configuration File:
+Configuration:
+============
 
 The configuration is stored in a `targetSP.json` file, which you can edit and keep in your current working directory.
 
@@ -78,3 +83,27 @@ You need to provide the following information (make sure the resulting JSON file
     - `submitName` (form only): is the value of the "name" attribute on the submit button
     - `inputs` (form only): is a list of `name`s of the input fields on the form and the corresponding `value`s you wish to fill in 
   - `postResponseInteractions`: a list of interaction that you should be executed after the IdP sent its SAML Response. The interactions should cause you to be logged in to the target SP (e.g. by accepting the attributes sent in the SAML Response). The interactions are specified in the same way as the preLoginInteractions.
+
+Creating your own test suite:
+============
+
+You can create your own test suite in the `saml2webssotest.testsuites` package by extending the provided TestSuite class. You can use the SAML2Int test case as an example
+
+Each test suite must define the characteristics of its mock IdP. This mock IdP is then used to test the target SP. In order to define your mock IdP, you should implement the abstract methods from the TestSuite class. You need to define the Entity ID, URL and IdP metadata XML for your mock IdP. Aside from these abstract methods, the TestSuite class also contains some utility methods.  
+
+You can then create the test cases. Each test case can be created as an inner class that extends one of the TestCase interfaces that define as specific type of test case:
+
+- ConfigTestCase: this type of test case can be used to test aspects of the user's configuration. You can do this by implementing the `checkConfig(SPConfiguration)` method, which supplies the user's configuration so you can check all aspects of it.
+- MetadataTestCase: this type of test case can be used to test the metadata of the target SP. You can do this by implementing the `checkMetadata(Document)` method, which supplies the SP metadata that was found so you can check all aspects of it.
+- RequestTestCase: this type of test case can be used to test the SAML Authentication Request XML that was sent by the target SP. You can do this by implementing the `checkRequest(Document)` method, which supplies the Authentication Request, as received by the mock IdP, so you can check all aspects of it.
+- LoginTestCase: this type of test case can be used to test if you can successfully login to the target SP with different types of SAML Responses by the mock IdP. You can do this by creating a class (or multiple classes) that extends the LoginAttempt interface that describes a login attempt. You must then implement the `getLoginAttempts()` method which should return a list of these LoginAttempt objects (you can attempt to login multiple times, for the cases where only one of many attempts need to succeed). Then you should implement the `checkLoginResults(List<Boolean>)` method which provides the results from the list of login attempts you defined so you can evaluate whether these results are as expected. Note that in most cases, you should define a list of only 1 LoginAttempt and check its results. 
+
+Each TestCase should ultimately return a TestStatus, which is an enum of the following values: UNKNOWN, INFORMATION, OK, WARNING, ERROR, CRITICAL.
+They should be used as follows:
+
+- INFORMATION: This status level is used when nothing can be said about the status of the test. It allows you to return a neutral status, which might sometimes be required.
+- OK: This status level is used when the test is successful.
+- WARNING: This status level is used when a test failed, but the failure does not mean incompliance with the specification. This occurs when testing the recommendations of a specification instead of its requirements.
+- ERROR: This status level is used when a test failed and its failure indicates incompliance with the specification.
+
+The values UNKOWN and CRITICAL should not be used in the test cases. UNKNOWN is a fallback status, which should never be used, and CRITICAL is used to show that the test itself failed, whenever possible (exceptions can and most likely will still be thrown) 

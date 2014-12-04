@@ -33,7 +33,7 @@ public class SamlWebSSOHandler extends AbstractHandler{
 	public void handle(String target, Request baseRequest, HttpServletRequest abstractRequest, HttpServletResponse response) throws IOException, ServletException {
 		Request request = (abstractRequest instanceof Request) ? (Request) abstractRequest : HttpChannel.getCurrentHttpChannel().getRequest();
 		String method = request.getMethod();
-		String samlRequest;
+		String samlRequest = null;
 
         if (method.equalsIgnoreCase("GET")) {
             // retrieve the SAML Request and binding
@@ -48,12 +48,10 @@ public class SamlWebSSOHandler extends AbstractHandler{
             }
             else if (request.getParameter(SAMLmisc.URLPARAM_SAMLARTIFACT) != null){
             	SPTestRunner.setSamlRequestBinding(SAMLmisc.BINDING_HTTP_ARTIFACT);
-            	samlRequest = "";
                 // TODO: implement for BINDING_HTTP_ARTIFACT
             }
             else{
-            	samlRequest = "";
-            	logger.error("SAML Request sent using an unknown binding (with GET)");
+            	logger.debug("Attempting IdP-initiated login");
             }
         }
         else if (method.equalsIgnoreCase("POST")) {
@@ -70,16 +68,13 @@ public class SamlWebSSOHandler extends AbstractHandler{
             }
             else if (request.getParameter(SAMLmisc.URLPARAM_SAMLARTIFACT) != null){
             	SPTestRunner.setSamlRequestBinding(SAMLmisc.BINDING_HTTP_ARTIFACT);
-            	samlRequest = "";
                 // TODO: implement for BINDING_HTTP_ARTIFACT
             }
             else{
-            	samlRequest = "";
             	logger.error("SAML Request sent using an unknown binding (with POST)");
             }
         }
         else{
-        	samlRequest = "";
         	logger.error("SAML Request sent using an unknown binding (with neither GET nor POST)");
         }
         

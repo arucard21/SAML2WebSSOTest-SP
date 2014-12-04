@@ -180,11 +180,14 @@ public class SPTestRunner {
 					}
 
 					// create the mock IdP and add all required handlers
-					mockIdP = new Server(new InetSocketAddress(testsuite.getMockIdPHostname(),testsuite.getMockIdPPort()));
+					mockIdP = new Server(
+							new InetSocketAddress(
+										testsuite.getMockIdPURL().getHost(),
+										testsuite.getMockIdPURL().getPort()));
 					
 					// add a context handler to properly handle the sso path
 					ContextHandler context = new ContextHandler();
-					context.setContextPath(testsuite.getMockIdPSsoPath());
+					context.setContextPath(testsuite.getMockIdPURL().getPath());
 					mockIdP.setHandler(context);
 
 					// add the SAML Request handler for all services
@@ -531,6 +534,7 @@ public class SPTestRunner {
 					}
 					// the login succeeded when all configured matches are found
 					if (statuscodeMatch && urlMatch && contentMatch && cookiesMatch) {
+						// check if the login was actually expected to succeed
 						testResults.add(new Boolean(true));
 					}
 					else{
@@ -666,12 +670,7 @@ public class SPTestRunner {
 			} 
 			else {
 				// login from the IdP's page
-				loginURL = new URL(
-						testsuite.getMockIdPProtocol(),
-						testsuite.getMockIdPHostname(),
-						testsuite.getMockIdPPort(),
-						"");
-				return browser.getPage(loginURL);
+				return browser.getPage(testsuite.getMockIdPURL());
 			}
 			// return the retrieved page
 		} catch (FailingHttpStatusCodeException e) {

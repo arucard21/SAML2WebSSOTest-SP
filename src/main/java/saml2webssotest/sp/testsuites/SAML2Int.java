@@ -50,30 +50,19 @@ public class SAML2Int extends TestSuite {
 	 * Logger for this class
 	 */
 	private final Logger logger = LoggerFactory.getLogger(SAML2Int.class);
-	
-	@Override
-	public String getMockIdPProtocol() {
-		return "http";
-	}
-
-	@Override
-	public String getMockIdPHostname() {
-		return "localhost";
-	}
-
-	@Override
-	public int getMockIdPPort() {
-		return 8080;
-	}
-
-	@Override
-	public String getMockIdPSsoPath() {
-		return "/sso";
-	}
 
 	@Override
 	public String getmockIdPEntityID() {
 		return "http://localhost:8080/sso";
+	}
+
+	public URL getMockIdPURL(){
+		try {
+			return new URL("http", "localhost", 8080, "/sso");
+		} catch (MalformedURLException e) {
+			logger.error("The URL of the mock IdP was malformed", e);
+			return null;
+		}
 	}
 
 	@Override
@@ -90,7 +79,10 @@ public class SAML2Int extends TestSuite {
 		KeyDescriptor keydescriptor = (KeyDescriptor) xmlbuilderfac.getBuilder(KeyDescriptor.DEFAULT_ELEMENT_NAME).buildObject(KeyDescriptor.DEFAULT_ELEMENT_NAME);
 		
 		ssos.setBinding(SAMLmisc.BINDING_HTTP_REDIRECT);
-		ssos.setLocation(getMockIdPURL());
+		if (getMockIdPURL() == null)
+			return null;
+
+		ssos.setLocation(getMockIdPURL().toString());
 
 		X509KeyInfoGeneratorFactory keyInfoGeneratorFactory = new X509KeyInfoGeneratorFactory();
 		keyInfoGeneratorFactory.setEmitEntityCertificate(true);
@@ -468,7 +460,6 @@ public class SAML2Int extends TestSuite {
 					}
 					// add the InReplyTo attribute to the Response as well
 					responseTransient.setInResponseTo(requestID);
-
 					return SAMLUtil.toXML(responseTransient);
 				}
 			}
