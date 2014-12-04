@@ -3,7 +3,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>SAML2WebSSOTest-SP</groupId>
 	<artifactId>SAML2WebSSOTest-SP</artifactId>
-	<version>1.0.5</version>
+	<version>1.0.6</version>
 	<properties>
 		<used.java.home>${env.JAVA_HOME}</used.java.home> <!-- ${path.separator} -->
 	</properties>

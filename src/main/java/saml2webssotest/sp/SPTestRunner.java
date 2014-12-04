@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -212,8 +213,7 @@ public class SPTestRunner {
 							TestResult result = new TestResult(status, message);
 							result.setName(testcase.getClass().getSimpleName());
 							result.setDescription(testcase.getDescription());
-							outputTestResult(result);
-							//testresults.add(result);
+							testresults.add(result);
 						} else {
 							logger.error("Provided class was not a subclass of interface TestCase");
 						}
@@ -234,12 +234,11 @@ public class SPTestRunner {
 							TestResult result = new TestResult(status, message);
 							result.setName(curTestcase.getClass().getSimpleName());
 							result.setDescription(curTestcase.getDescription());
-							outputTestResult(result);
-							//testresults.add(result);
+							//outputTestResult(result);
+							testresults.add(result);
 						}
 					}
-					// handle test result(s)
-					//outputTestResult(testresults);
+					outputTestResults(testresults);
 				} else {
 					logger.error("Provided class was not a TestSuite");
 				}
@@ -688,27 +687,12 @@ public class SPTestRunner {
 	}
 
 	/**
-	 * Process the test results and output them appropriately
+	 * Process the test results and output them as JSON
 	 * 
-	 * @param testresult
-	 *            is the result of the test case that was run
+	 * @param testresults is a list of test case results
 	 */
-	private static void outputTestResult(TestResult testresult) {
-		// TODO maybe use a templating system to output nicely at some point, now just output to sysout
-		//for (TestResult testresult : testresults) {
-			String name = testresult.getName();
-			String message = testresult.getResultMessage();
-			TestStatus status = testresult.getResult();
-			// use tabs to line out the test status correctly
-			String head = "";
-			if (status == TestStatus.OK || status == TestStatus.ERROR){
-				head = status + ":\t\t";
-			}
-			else{
-				head = status + ":\t";
-			}
-			System.out.println(head + message + " (" + name + ")");
-		//}
+	private static void outputTestResults(List<TestResult> testresults) {
+		System.out.println(new GsonBuilder().setPrettyPrinting().create().toJson(testresults));
 	}
 
 	/**
