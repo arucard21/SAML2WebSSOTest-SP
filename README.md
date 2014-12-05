@@ -12,16 +12,16 @@ SAML2WebSSOTest-SP provides a framework for the automated testing of SAML 2.0 SP
 
 ## Usage:
 
-1. Retrieve the mock IdP metadata by running SAML2WebSSOTest-SP with the parameters ```-t/--testsuite``` and ```-m/--metadata```, e.g ```java -jar SAML2WebSSOTest-SP -t SAML2Int" -m``` when running from JAR or ```SAML2WebSSOTest.SP.SPTestRunner -t SAML2Int -m``` when running in an IDE. This will retrieve the metadata for the test suite you specified with ```-t/--testsuite```
+1. Retrieve the mock IdP metadata by running SAML2WebSSOTest-SP with the parameters ```-T/--testsuite``` and ```-m/--metadata```, e.g ```java -jar SAML2WebSSOTest-SP -T SAML2Int" -m``` when running from JAR or ```SAML2WebSSOTest.SP.SPTestRunner -T SAML2Int -m``` when running in an IDE. This will retrieve the metadata for the test suite you specified with ```-T/--testsuite```
 2. Configure your SP to use the mock IdP's metadata
 3. Copy the ```targetSP.json``` file and fill in the necessary options. This is described in the Configuration section below
 4. Optionally copy the ```slf4j.properties``` file as well to specify the logging configuration
-5. Run the test cases in a test suite with the parameters ```-t/--testsuite```, ```-s/--spconfig``` and ```-c/--testcase```, e.g. ```java -jar SAML2WebSSOTest-SP -t SAML2Int -s /path/to/targetSP.properties -c MetadataAvailable``` when running from JAR or ```SAML2WebSSOTest.SP.SPTestRunner -t SAML2Int -s /path/to/targetSP.properties -c MetadataAvailable``` when running in an IDE. You can also run this without the ```-c/--testcase``` parameter, this will cause the test to run all test cases in the test suite.
+5. Run the test cases in a test suite with the parameters ```-T/--testsuite```, ```-c/--spconfig``` and ```-t/--testcase```, e.g. ```java -jar SAML2WebSSOTest-SP -T SAML2Int -c /path/to/targetSP.properties -t MetadataAvailable``` when running from JAR or ```SAML2WebSSOTest.SP.SPTestRunner -T SAML2Int -c /path/to/targetSP.properties -t MetadataAvailable``` when running in an IDE. You can also run this without the ```-t/--testcase``` parameter, this will cause the test to run all test cases in the test suite.
 
 Some additional useful commands are:
 - ```SAML2WebSSOTest.SP.SPTestRunner -h``` : Show the help message, containing an overview of all available parameters.
 - ```SAML2WebSSOTest.SP.SPTestRunner -L``` : Show a list of all available test suites 
-- ```SAML2WebSSOTest.SP.SPTestRunner -t <test suite> -l``` : Show a list of all available test cases in the given test suite
+- ```SAML2WebSSOTest.SP.SPTestRunner -T <test suite> -l``` : Show a list of all available test cases in the given test suite
 
 ## Configuration:
 

@@ -117,14 +117,13 @@ public class SPTestRunner {
 		// define the command-line options
 		Options options = new Options();
 		options.addOption("h", "help", false, "Print this help message");
-		options.addOption("H", "humanreadable", false,"Print the test results in human-readable format (not yet supported)");
 		options.addOption("i", "insecure", false,"Do not verify HTTPS server certificates");
-		options.addOption("s", "spconfig", true,"The name of the properties file containing the configuration of the target SP");
+		options.addOption("c", "spconfig", true,"The name of the properties file containing the configuration of the target SP");
 		options.addOption("l", "listTestcases", false,"List all the test cases");
 		options.addOption("L", "listTestsuites", false,"List all the test suites");
 		options.addOption("m", "metadata", false,"Display the mock IdP metadata");
-		options.addOption("t", "testsuite", true,"Specifies the test suite from which you wish to run a test case");
-		options.addOption("c","testcase",true,"The name of the test case you wish to run. If omitted, all test cases from the test suite are run");
+		options.addOption("T", "testsuite", true,"Specifies the test suite from which you wish to run a test case");
+		options.addOption("t","testcase",true,"The name of the test case you wish to run. If omitted, all test cases from the test suite are run");
 
 		LinkedList<TestResult> testresults = new LinkedList<TestResult>();
 		try {
@@ -596,20 +595,6 @@ public class SPTestRunner {
 						// cast the interaction to the correct class
 						if(interaction instanceof FormInteraction) {
 							FormInteraction formInteraction = (FormInteraction) interaction;
-							/*
-							HtmlForm preLoginForm = loginPage.getFormByName(formInteraction.getFormName());
-							HtmlSubmitInput button = preLoginForm.getInputByName(formInteraction.getSubmitName());
-							
-							// fill in all provided input fields
-							HashMap<String, String> inputs = formInteraction.getInputs();
-							for(Map.Entry<String, String> input: inputs.entrySet()){
-								// retrieve the first input field with the provided name
-								HtmlInput textField = preLoginForm.getInputsByName(input.getKey()).get(0);	
-								textField.setValueAttribute(input.getValue());
-							}
-						    // submit the form, updating the retrieved page
-						    retrievedPage = button.click();
-						    */
 							retrievedPage = formInteraction.executeOnPage(loginPage);
 							
 						    logger.trace("Login page (after form submit)");
@@ -617,42 +602,12 @@ public class SPTestRunner {
 						}
 						else if(interaction instanceof LinkInteraction) {
 							LinkInteraction linkInteraction = (LinkInteraction) interaction;
-							/*
-							String inputValue = linkInteraction.getLookupValue();
-							HtmlAnchor input;
-							if (linkInteraction.getLookupType() == LinkInteraction.String.NAME)
-								input = loginPage.getAnchorByName(inputValue);
-							else if (linkInteraction.getLookupType() == LinkInteraction.String.TEXT)
-								input = loginPage.getAnchorByText(inputValue);
-							else if (linkInteraction.getLookupType() == LinkInteraction.String.HREF)
-								input = loginPage.getAnchorByHref(inputValue);
-							else{
-								logger.error("Unknown lookup type found in link interaction object");
-								input = null;
-							}
-							// click the link and update the retrieved page
-							if (input != null) retrievedPage = input.click();
-							*/
 							retrievedPage = linkInteraction.executeOnPage(loginPage);
 							
 							logger.trace("Login page (after link click)");
 						    logger.trace(retrievedPage.getWebResponse().getContentAsString());
 						}
 						else {
-							/*
-							String inputValue = elementInteraction.getLookupValue();
-							HtmlElement targetElement;
-							if (elementInteraction.getLookupAttribute() == Interaction.LookupType.ID)
-								targetElement = loginPage.getHtmlElementById(inputValue);
-							else if (elementInteraction.getLookupAttribute() == Interaction.LookupType.NAME)
-								targetElement = loginPage.getElementByName(inputValue);
-							else{
-								logger.error("Unknown lookup type found in element interaction object");
-								targetElement = null;
-							}
-							// click the link and update the retrieved page
-							if (targetElement != null) retrievedPage = targetElement.click();
-							*/
 							retrievedPage = interaction.executeOnPage(loginPage);
 							
 							logger.trace("Login page (after element click)");
