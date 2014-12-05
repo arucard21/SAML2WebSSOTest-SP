@@ -82,5 +82,10 @@
 			<artifactId>SAML2WebSSOTest-Common</artifactId>
 			<version>1.0.5</version>
 		</dependency>
+		<dependency>
+			<groupId>org.reflections</groupId>
+			<artifactId>reflections</artifactId>
+			<version>0.9.9</version>
+		</dependency>
 	</dependencies>
 </project>
