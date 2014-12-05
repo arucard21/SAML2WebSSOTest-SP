@@ -2,7 +2,7 @@
 Framework for automated testing of SAML 2.0 SP entities, written in Java.
 
 # Description
-SAML2WebSSOTest-SP provides a framework for testing SAML 2.0 SP entities that use the Web SSO profile automatically. This is commonly known as Single Sign-On (though not all Single Sign-On solutions use SAML). This framework allows you to create new test cases or run existing ones. Currently, only a test suite for the SAML2Int (http://saml2int.org) profile is available, but more can be added to the repository if they are supplied. When you run the test(s), the test results are output in JSON format.
+SAML2WebSSOTest-SP provides a framework for the automated testing of SAML 2.0 SP entities that use the Web SSO profile. This is commonly known as Single Sign-On (though not all Single Sign-On solutions use SAML). This framework allows you to create new test cases or run existing ones. Currently, only a test suite for the SAML2Int (http://saml2int.org) profile is available, but more can be added to the repository if they are supplied. When you run the test(s), the test results are output in JSON format.
 
 ### Limitations:
 - Artifact binding is not supported
@@ -63,7 +63,7 @@ You need to provide the following information (make sure the resulting JSON file
   - `friendlyName`: a human-readable representation of the SAML attribute's name
   - `attributeValue`: the value of the attribute
   - `customAttributes`: a list of additional, custom XML attributes for this SAML attribute, specified by `name` and `value`
-  - `preLoginInteractions`: a list of interaction that you should be executed on the login page. The interactions are executed sequentially and should cause the target SP to send its authentication request to the IdP (e.g. clicking an IdP selection link). Each interaction is specified as follows: 
+  - `preLoginInteractions`: a list of interactions that should be executed on the login page. The interactions are executed sequentially and should cause the target SP to send its authentication request to the IdP (e.g. clicking an IdP selection link). Each interaction is specified as follows: 
     - `interactionType`: This specifies how you wish to interact with the page. This should be `form`, `link` or `element`.
       - `form`: Allows you to look up a form on the page, fill in some of the fields and submit it
       - `link`: Allows you to look up a link (with some link-specific attributes) on the page and click it
@@ -75,11 +75,11 @@ You need to provide the following information (make sure the resulting JSON file
     - `lookupValue`: This should be the value of the attribute or text for the element you wish to interact with
     - `submitName` (form only): is the value of the "name" attribute on the submit button
     - `inputs` (form only): is a list of `name`s of the input fields on the form and the corresponding `value`s you wish to fill in 
-  - `postResponseInteractions`: a list of interaction that you should be executed after the IdP sent its SAML Response. The interactions should cause you to be logged in to the target SP (e.g. by accepting the attributes sent in the SAML Response). The interactions are specified in the same way as the preLoginInteractions.
+  - `postResponseInteractions`: a list of interactions that should be executed after the IdP sent its SAML Response. The interactions should cause you to be logged in to the target SP (e.g. by accepting the attributes sent in the SAML Response). The interactions are specified in the same way as the preLoginInteractions.
 
 ## Creating your own test suite:
 
-You can create your own test suite in the `saml2webssotest.testsuites` package by extending the provided TestSuite class. You can use the SAML2Int test case as an example
+You can create your own test suite in the `saml2webssotest.sp.testsuites` package by extending the provided TestSuite class. You can use the SAML2Int test case as an example.
 
 Each test suite must define the characteristics of its mock IdP. This mock IdP is then used to test the target SP. In order to define your mock IdP, you should implement the abstract methods from the TestSuite class. You need to define the Entity ID, URL and IdP metadata XML for your mock IdP. Aside from these abstract methods, the TestSuite class also contains some utility methods.  
 
@@ -94,8 +94,8 @@ Each TestCase should ultimately return a TestStatus, which is an enum of the fol
 They should be used as follows:
 
 - `INFORMATION`: This status level is used when nothing can be said about the status of the test. It allows you to return a neutral status, which might sometimes be required.
-- OK: This status level is used when the test is successful.
-- `WARNING`: This status level is used when a test failed, but the failure does not mean incompliance with the specification. This occurs when testing the recommendations of a specification instead of its requirements.
-- `ERROR`: This status level is used when a test failed and its failure indicates incompliance with the specification.
+- `OK`: This status level is used when the test is successful.
+- `WARNING`: This status level is used when a test failed, but the failure does not mean non-compliance with the specification. This occurs when testing the recommendations of a specification instead of its requirements.
+- `ERROR`: This status level is used when a test failed and its failure indicates non-compliance with the specification.
 
 The values `UNKNOWN` and `CRITICAL` should not be used in the test cases. UNKNOWN is a fallback status, which should never be used, and CRITICAL is used to show that the test itself failed, whenever possible (exceptions can and most likely will still be thrown) 
