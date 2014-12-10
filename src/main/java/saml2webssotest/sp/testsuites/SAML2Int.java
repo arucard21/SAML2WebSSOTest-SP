@@ -45,7 +45,7 @@ import saml2webssotest.sp.SPConfiguration;
 import saml2webssotest.sp.SPTestRunner;
 
 
-public class SAML2Int extends TestSuite {
+public class SAML2Int extends SPTestSuite {
 	/**
 	 * Logger for this class
 	 */
@@ -66,7 +66,7 @@ public class SAML2Int extends TestSuite {
 	}
 
 	@Override
-	public String getIdPMetadata() {
+	public String getMockedMetadata() {
 		try {
 			DefaultBootstrap.bootstrap();
 		} catch (ConfigurationException e) {

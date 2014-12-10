@@ -3,7 +3,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>SAML2WebSSOTest-SP</groupId>
 	<artifactId>SAML2WebSSOTest-SP</artifactId>
-	<version>1.0.6</version>
+	<version>1.0.7</version>
 	<properties>
 		<used.java.home>${env.JAVA_HOME}</used.java.home> <!-- ${path.separator} -->
 	</properties>
@@ -73,19 +73,9 @@
 			<version>1.2</version>
 		</dependency>
 		<dependency>
-			<groupId>com.google.code.gson</groupId>
-			<artifactId>gson</artifactId>
-			<version>2.2.4</version>
-		</dependency>
-		<dependency>
 			<groupId>SAML2WebSSOTest-Common</groupId>
 			<artifactId>SAML2WebSSOTest-Common</artifactId>
-			<version>1.0.5</version>
-		</dependency>
-		<dependency>
-			<groupId>org.reflections</groupId>
-			<artifactId>reflections</artifactId>
-			<version>0.9.9</version>
+			<version>1.0.7</version>
 		</dependency>
 	</dependencies>
 </project>

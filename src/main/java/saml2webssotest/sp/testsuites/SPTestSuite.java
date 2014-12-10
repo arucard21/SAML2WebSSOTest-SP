@@ -15,8 +15,11 @@ import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.security.interfaces.RSAPrivateKey;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+
+import javax.xml.namespace.QName;
 
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.openssl.PEMReader;
@@ -48,10 +51,11 @@ import org.opensaml.xml.security.x509.BasicX509Credential;
 import org.opensaml.xml.security.x509.X509Credential;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.w3c.dom.Document;
 
 import saml2webssotest.common.SAMLAttribute;
+import saml2webssotest.common.StringPair;
 import saml2webssotest.common.TestStatus;
+import saml2webssotest.common.TestSuite;
 import saml2webssotest.common.standardNames.MD;
 import saml2webssotest.common.standardNames.SAMLmisc;
 import saml2webssotest.sp.LoginAttempt;
@@ -75,7 +79,7 @@ import saml2webssotest.sp.SPTestRunner;
  * 
  * @author: Riaas Mokiem
  */
-public abstract class TestSuite {
+public abstract class SPTestSuite implements TestSuite {
 	/**
 	 * Logger for this class
 	 */
@@ -102,7 +106,7 @@ public abstract class TestSuite {
 	 * 
 	 * @return: the metadata XML that should be used by the mock IdP when running tests from this test suite
 	 */
-	public abstract String getIdPMetadata();
+	public abstract String getMockedMetadata();
 
 	/**
 	 * Retrieve the X.509 Certificate that should be used by the mock IdP.
@@ -332,15 +336,15 @@ public abstract class TestSuite {
 			// set the friendly name that was configured for the target SP
 			attribute.setFriendlyName(attr.getFriendlyName());
 			// add any additional custom attributes
-			/*HashMap<String, String> customattrs = attr.getCustomAttributes();
-			for(Map.Entry<String, String> customattr : customattrs.entrySet()){
+			ArrayList<StringPair> customattrs = attr.getCustomAttributes();
+			for(StringPair customattr : customattrs){
 				if (!attr.getNamespace().isEmpty() && !attr.getPrefix().isEmpty()){
-					attribute.getUnknownAttributes().put(new QName(attr.getNamespace(), customattr.getKey(), attr.getPrefix()), customattr.getValue());
+					attribute.getUnknownAttributes().put(new QName(attr.getNamespace(), customattr.getName(), attr.getPrefix()), customattr.getValue());
 				}
 				else{
 					logger.error("Custom attributes are configured for the SAML Attributes, but no custom namespace and prefix were given");
 				}
-			}*/
+			}
 			// create the AttributeValue node, which is the same as xs:any but with the AttributeValue tag name
 			XSString attrval = (XSString) builderfac.getBuilder(XSString.TYPE_NAME).buildObject(AttributeValue.DEFAULT_ELEMENT_NAME, XSString.TYPE_NAME);
 			// set the value of the AttributeValue
@@ -353,40 +357,6 @@ public abstract class TestSuite {
 		assertion.getAttributeStatements().add(attrStat);
 	}
 	
-	/**
-	 * The interface for all test cases. Defines the methods that are required for the test runner to correctly run
-	 * the test case.
-	 * 
-	 * In the test case you can define what should be checked in the SAML SP Metadata or in the SAML Request. You can also
-	 * provide LoginAttempt objects that specify the logins attempts that should be tested on the SP.  
-	 * 
-	 * @author RiaasM
-	 *
-	 */
-	public interface TestCase{
-
-		/**
-		 * Retrieve a description of the test case
-		 * 
-		 * @return a description of this test case
-		 */
-		String getDescription();
-		
-		/**
-		 * Retrieve the message that should be reported when the test passes.
-		 * 
-		 * @return the message for when the test passes
-		 */
-		String getSuccessMessage();
-		
-		/**
-		 * Retrieve the message that should be reported when the test fails.
-		 * 
-		 * @return the message for when the test fails
-		 */
-		String getFailedMessage();
-	}
-	
 	public interface ConfigTestCase extends TestCase {
 		
 		/**
@@ -397,16 +367,6 @@ public abstract class TestSuite {
 		TestStatus checkConfig(SPConfiguration config);
 	}
 
-	public interface MetadataTestCase extends TestCase {
-		
-		/**
-		 * Check the provided metadata.  
-		 * 
-		 * @return the status of the test
-		 */
-		TestStatus checkMetadata(Document metadata);
-	}
-	
 	public interface RequestTestCase extends TestCase {
 
 		/**
