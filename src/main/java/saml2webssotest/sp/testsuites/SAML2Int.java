@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import javax.net.ssl.HttpsURLConnection;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 
@@ -36,6 +37,7 @@ import org.xml.sax.SAXException;
 import saml2webssotest.common.SAMLAttribute;
 import saml2webssotest.common.SAMLUtil;
 import saml2webssotest.common.TestStatus;
+import saml2webssotest.common.standardNames.CipherSuiteNames;
 import saml2webssotest.common.standardNames.MD;
 import saml2webssotest.common.standardNames.SAML;
 import saml2webssotest.common.standardNames.SAMLP;
@@ -56,7 +58,7 @@ public class SAML2Int extends SPTestSuite {
 		return "http://localhost:8080/sso";
 	}
 
-	public URL getMockIdPURL(){
+	public URL getMockServerURL(){
 		try {
 			return new URL("http", "localhost", 8080, "/sso");
 		} catch (MalformedURLException e) {
@@ -79,10 +81,10 @@ public class SAML2Int extends SPTestSuite {
 		KeyDescriptor keydescriptor = (KeyDescriptor) xmlbuilderfac.getBuilder(KeyDescriptor.DEFAULT_ELEMENT_NAME).buildObject(KeyDescriptor.DEFAULT_ELEMENT_NAME);
 		
 		ssos.setBinding(SAMLmisc.BINDING_HTTP_REDIRECT);
-		if (getMockIdPURL() == null)
+		if (getMockServerURL() == null)
 			return null;
 
-		ssos.setLocation(getMockIdPURL().toString());
+		ssos.setLocation(getMockServerURL().toString());
 
 		X509KeyInfoGeneratorFactory keyInfoGeneratorFactory = new X509KeyInfoGeneratorFactory();
 		keyInfoGeneratorFactory.setEmitEntityCertificate(true);
@@ -114,7 +116,7 @@ public class SAML2Int extends SPTestSuite {
 	 *
 	 */
 	public class MetadataAvailable implements MetadataTestCase {
-		private String failedMessage;
+		private String resultMessage;
 		
 		@Override
 		public String getDescription() {
@@ -122,13 +124,8 @@ public class SAML2Int extends SPTestSuite {
 		}
 
 		@Override
-		public String getSuccessMessage() {
-			return "The Service Provider's metadata is available";
-		}
-
-		@Override
-		public String getFailedMessage() {
-			return failedMessage;
+		public String getResultMessage() {
+			return resultMessage;
 		}
 
 		@Override
@@ -137,26 +134,27 @@ public class SAML2Int extends SPTestSuite {
 				NodeList mdEDs = metadata.getElementsByTagNameNS(MD.NAMESPACE, MD.ENTITYDESCRIPTOR);
 				// there should be only one entity descriptor
 				if(mdEDs.getLength() > 1){
-					failedMessage = "The provided metadata contained metadata for multiple SAML entities";
+					resultMessage = "The provided metadata contained metadata for multiple SAML entities";
 					return TestStatus.CRITICAL;
 				}
 				else if(mdEDs.getLength() == 0){
-					failedMessage = "The provided metadata contained no metadata for a SAML entity";
+					resultMessage = "The provided metadata contained no metadata for a SAML entity";
 					return TestStatus.CRITICAL;
 				}
 				Node mdED = mdEDs.item(0);
 				String curNS = mdED.getNamespaceURI();
 				// check if the provided document is indeed SAML Metadata (or at least uses the SAML Metadata namespace)
 				if(curNS != null && curNS.equalsIgnoreCase(MD.NAMESPACE)){
+					resultMessage = "The Service Provider's metadata is available";
 					return TestStatus.OK;
 				}
 				else{
-					failedMessage = "The Service Provider's metadata did not use the SAML Metadata namespace";
+					resultMessage = "The Service Provider's metadata did not use the SAML Metadata namespace";
 					return TestStatus.ERROR;
 				}
 			}
 			else{
-				failedMessage = "The Service Provider's metadata was not available";
+				resultMessage = "The Service Provider's metadata was not available";
 				return TestStatus.ERROR;
 			}
 		}
@@ -171,21 +169,16 @@ public class SAML2Int extends SPTestSuite {
 	 *
 	 */
 	public class MetadataElementsAvailable implements MetadataTestCase{
-		private String failedMessage;
+		private String resultMessage;
 	
 		@Override
 		public String getDescription() {
 			return "Test if the Service Provider's metadata contains all minimally required elements (MUST requirement)";
 		}
-	
+
 		@Override
-		public String getSuccessMessage() {
-			return "The Service Provider's metadata contains all minimally required elements";
-		}
-	
-		@Override
-		public String getFailedMessage() {
-			return failedMessage;
+		public String getResultMessage() {
+			return resultMessage;
 		}
 	
 		/**
@@ -219,19 +212,20 @@ public class SAML2Int extends SPTestSuite {
 						}
 						// check if both elements were found
 						if (kdFound && acsFound){
+							resultMessage = "The Service Provider's metadata contains all minimally required elements";
 							return TestStatus.OK;
 						}
 					}
-					failedMessage = "None of the SPSSODescriptor elements in the Service Provider's metadata contained both the KeyDescriptor and the AssertionConsumerService element";
+					resultMessage = "None of the SPSSODescriptor elements in the Service Provider's metadata contained both the KeyDescriptor and the AssertionConsumerService element";
 					return TestStatus.ERROR;
 				}
 				else{
-					failedMessage = "The Service Provider's metadata did not contain an SPSSODescriptor";
+					resultMessage = "The Service Provider's metadata did not contain an SPSSODescriptor";
 					return TestStatus.ERROR;
 				}
 			}
 			else {
-				failedMessage = "The test case could not be performed because there was no metadata available";
+				resultMessage = "The test case could not be performed because there was no metadata available";
 				return TestStatus.CRITICAL;
 			}
 		}
@@ -246,7 +240,7 @@ public class SAML2Int extends SPTestSuite {
 	 *
 	 */
 	public class RequestByRedirect implements RequestTestCase{
-		private String failedMessage; 
+		private String resultMessage; 
 
 		@Override
 		public String getDescription() {
@@ -254,22 +248,18 @@ public class SAML2Int extends SPTestSuite {
 		}
 
 		@Override
-		public String getSuccessMessage() {
-			return "The Service Provider sent its Authentication Request using the HTTP-Redirect binding";
-		}
-
-		@Override
-		public String getFailedMessage() {
-			return failedMessage;
+		public String getResultMessage() {
+			return resultMessage;
 		}
 
 		@Override
 		public TestStatus checkRequest(String request, String binding) {
 			if (binding.equalsIgnoreCase(SAMLmisc.BINDING_HTTP_REDIRECT)){
+				resultMessage = "The Service Provider sent its Authentication Request using the HTTP-Redirect binding";
 				return TestStatus.OK;
 			}
 			else {
-				failedMessage = "The Service Provider did not send its Authentication request using the HTTP-Redirect Binding. Instead, it used: "+binding;
+				resultMessage = "The Service Provider did not send its Authentication request using the HTTP-Redirect Binding. Instead, it used: "+binding;
 				return TestStatus.ERROR;
 			}
 		}
@@ -284,7 +274,7 @@ public class SAML2Int extends SPTestSuite {
 	 *
 	 */
 	public class RequestContainsACSURL implements RequestTestCase{
-		private String failedMessage; 
+		private String resultMessage; 
 
 		@Override
 		public String getDescription() {
@@ -292,23 +282,19 @@ public class SAML2Int extends SPTestSuite {
 		}
 
 		@Override
-		public String getSuccessMessage() {
-			return "The Service Provider's Authentication Request contains an AssertionConsumerServiceURL attribute";
-		}
-
-		@Override
-		public String getFailedMessage() {
-			return failedMessage;
+		public String getResultMessage() {
+			return resultMessage;
 		}
 
 		@Override
 		public TestStatus checkRequest(String request, String binding) {
 			Node acsURL = SAMLUtil.fromXML(request).getDocumentElement().getAttributes().getNamedItem(SAMLP.ASSERTIONCONSUMERSERVICEURL);
 			if (acsURL != null){
+				resultMessage = "The Service Provider's Authentication Request contains an AssertionConsumerServiceURL attribute";
 				return TestStatus.OK;
 			}
 			else{
-				failedMessage = "The Service Provider's Authentication Request did not contain an AssertionConsumerServiceURL attribute";
+				resultMessage = "The Service Provider's Authentication Request did not contain an AssertionConsumerServiceURL attribute";
 				return TestStatus.ERROR;
 			}
 		}
@@ -321,39 +307,33 @@ public class SAML2Int extends SPTestSuite {
 	 *
 	 */
 	public class RequestProtocolBinding implements RequestTestCase{
-		private String successMessage;
-		private String failedMessage; 
+		private String resultMessage;
 	
 		@Override
 		public String getDescription() {
 			return "Test if the Service Provider's Authentication Request contains a ProtocolBinding attribute set to HTTP POST (MUST requirement)";
 		}
-	
+
 		@Override
-		public String getSuccessMessage() {
-			return successMessage;
-		}
-	
-		@Override
-		public String getFailedMessage() {
-			return failedMessage;
+		public String getResultMessage() {
+			return resultMessage;
 		}
 	
 		@Override
 		public TestStatus checkRequest(String request, String binding) {
 			Node protBind = SAMLUtil.fromXML(request).getDocumentElement().getAttributes().getNamedItem(SAMLP.PROTOCOLBINDING);
 			if (protBind == null){
-				successMessage = "The Service Provider's Authentication Request does not contain a ProtocolBinding attribute";
+				resultMessage = "The Service Provider's Authentication Request does not contain a ProtocolBinding attribute";
 				return TestStatus.OK;
 			}
 			else{
 				if (protBind.getNodeValue().equals(SAMLmisc.BINDING_HTTP_POST)){
-					successMessage = "The Service Provider's Authentication Request contained a ProtocolBinding attribute set to HTTP POST";
+					resultMessage = "The Service Provider's Authentication Request contained a ProtocolBinding attribute set to HTTP POST";
 					return TestStatus.OK;
 				}
 				else{
 					// be more specific in the failed test's message, so it's easier to know what went wrong
-					failedMessage = "The Service Provider's Authentication Request contained a ProtocolBinding attribute that was not set to '"+SAMLmisc.BINDING_HTTP_POST+"'";
+					resultMessage = "The Service Provider's Authentication Request contained a ProtocolBinding attribute that was not set to '"+SAMLmisc.BINDING_HTTP_POST+"'";
 					return TestStatus.ERROR;
 				}
 			}
@@ -367,28 +347,26 @@ public class SAML2Int extends SPTestSuite {
 	 *
 	 */
 	public class RequestNoSubject implements RequestTestCase{	
+		private String resultMessage;
 		@Override
 		public String getDescription() {
 			return "Test if the Service Provider's Authentication Request contains no Subject node (MUST requirement)";
 		}
-	
+
 		@Override
-		public String getSuccessMessage() {
-			return "The Service Provider's Authentication Request contains no Subject node";
-		}
-	
-		@Override
-		public String getFailedMessage() {
-			return "The Service Provider's Authentication Request contained a Subject node";
+		public String getResultMessage() {
+			return resultMessage;
 		}
 	
 		@Override
 		public TestStatus checkRequest(String request, String binding) {
 			NodeList subjects = SAMLUtil.fromXML(request).getElementsByTagNameNS(SAML.NAMESPACE, SAML.SUBJECT);
 			if (subjects.getLength() == 0){
+				resultMessage = "The Service Provider's Authentication Request contains no Subject node";
 				return TestStatus.OK;
 			}
 			else{
+				resultMessage = "The Service Provider's Authentication Request contained a Subject node";
 				return TestStatus.ERROR;
 			}
 		}
@@ -403,8 +381,7 @@ public class SAML2Int extends SPTestSuite {
 	 * @author RiaasM
 	 */
 	public class LoginTransientPersistent implements LoginTestCase{
-		private String failedMessage;
-		private String successMessage;
+		private String resultMessage;
 
 		@Override
 		public String getDescription() {
@@ -412,13 +389,8 @@ public class SAML2Int extends SPTestSuite {
 		}
 
 		@Override
-		public String getSuccessMessage() {
-			return successMessage;
-		}
-
-		@Override
-		public String getFailedMessage() {
-			return failedMessage;
+		public String getResultMessage() {
+			return resultMessage;
 		}
 
 		@Override
@@ -512,21 +484,21 @@ public class SAML2Int extends SPTestSuite {
 			// the results should come back in the same order as they were provided, so we can check which login attempts succeeded
 			if (loginResults.get(0).booleanValue()){	
 				if (loginResults.get(1).booleanValue()){
-					successMessage = "The Service Provider could log in with both transient and persistent name identifier format";
+					resultMessage = "The Service Provider could log in with both transient and persistent name identifier format";
 					return TestStatus.OK;
 				}
 				else{
-					successMessage = "The Service Provider could log in with transient name identifier format";
+					resultMessage = "The Service Provider could log in with transient name identifier format";
 					return TestStatus.OK;
 				}
 			}
 			else{
 				if (loginResults.get(1).booleanValue()){
-					successMessage = "The Service Provider could log in with persistent name identifier format";
+					resultMessage = "The Service Provider could log in with persistent name identifier format";
 					return TestStatus.OK;
 				}
 				else{
-					failedMessage = "The Service Provider could not log in with either transient or persistent name identifier format";
+					resultMessage = "The Service Provider could not log in with either transient or persistent name identifier format";
 					return TestStatus.ERROR;
 				}
 			}
@@ -541,6 +513,7 @@ public class SAML2Int extends SPTestSuite {
 	 * @author RiaasM
 	 */
 	public class LoginIdPInitiated implements LoginTestCase{
+		private String resultMessage;
 
 		@Override
 		public String getDescription() {
@@ -548,13 +521,8 @@ public class SAML2Int extends SPTestSuite {
 		}
 
 		@Override
-		public String getSuccessMessage() {
-			return "The Service Provider allowed IdP-initiated login";
-		}
-
-		@Override
-		public String getFailedMessage() {
-			return "The Service Provider did not allow IdP-initiated login";
+		public String getResultMessage() {
+			return resultMessage;
 		}
 
 		@Override
@@ -589,7 +557,6 @@ public class SAML2Int extends SPTestSuite {
 					// add the InReplyTo attribute to the Response as well
 
 					String responseXML = SAMLUtil.toXML(response);
-					logger.trace(responseXML);
 					return responseXML;
 				}
 			}
@@ -601,10 +568,14 @@ public class SAML2Int extends SPTestSuite {
 		@Override
 		public TestStatus checkLoginResults(List<Boolean> loginResults) {
 			// the results should come back in the same order as they were provided, so we can check which login attempts succeeded
-			if (loginResults.get(0).booleanValue())	
+			if (loginResults.get(0).booleanValue())	{
+				resultMessage = "The Service Provider allowed IdP-initiated login";
 				return TestStatus.OK;
-			else
+			}
+			else{
+				resultMessage = "The Service Provider did not allow IdP-initiated login";
 				return TestStatus.ERROR;
+			}
 		}
 	}
 	
@@ -617,29 +588,23 @@ public class SAML2Int extends SPTestSuite {
 	 *
 	 */
 	public class ConfigAttrNameFormatURI implements ConfigTestCase{
-		private String successMessage;
-		private String failedMessage;
+		private String resultMessage;
 	
 		@Override
 		public String getDescription() {
 			return "Test if the correct NameFormat is configured for attributes (MUST requirement)";
 		}
-	
+
 		@Override
-		public String getSuccessMessage() {
-			return successMessage;
-		}
-	
-		@Override
-		public String getFailedMessage() {
-			return failedMessage;
+		public String getResultMessage() {
+			return resultMessage;
 		}
 	
 		@Override
 		public TestStatus checkConfig(SPConfiguration config) {
 			ArrayList<SAMLAttribute> attrs = config.getAttributes();
 			if (attrs.size() == 0){
-				successMessage = "No attributes were configured so the NameFormat restriction doesn't apply";
+				resultMessage = "No attributes were configured so the NameFormat restriction doesn't apply";
 				return TestStatus.OK;
 			}
 			else{
@@ -647,11 +612,11 @@ public class SAML2Int extends SPTestSuite {
 				for (SAMLAttribute attr : attrs){
 					if(!attr.getNameFormat().equals(SAMLmisc.NAMEFORMAT_URI)){
 						// be more specific in the failed test's message, so it's easier to know what went wrong
-						failedMessage = "A configured attribute uses a NameFormat other than '"+SAMLmisc.NAMEFORMAT_URI+"'";
+						resultMessage = "A configured attribute uses a NameFormat other than '"+SAMLmisc.NAMEFORMAT_URI+"'";
 						return TestStatus.WARNING;
 					}
 				}
-				successMessage = "All attributes were configured with the correct NameFormat";
+				resultMessage = "All attributes were configured with the correct NameFormat";
 				return TestStatus.OK;
 			}
 		}
@@ -666,21 +631,16 @@ public class SAML2Int extends SPTestSuite {
 	 *
 	 */
 	public class MetadataWellKnownLocation implements MetadataTestCase {
-		private String failedMessage = "The metadata was not found at the Well-Known Location (the URL represented by the Entity ID)";
+		private String resultMessage;
 		
 		@Override
 		public String getDescription() {
 			return "Test if the Service Provider's metadata is available at the Well-Known Location (SHOULD requirement)";
 		}
-	
+
 		@Override
-		public String getSuccessMessage() {
-			return "The Service Provider's metadata is available at the Well-Known Location";
-		}
-	
-		@Override
-		public String getFailedMessage() {
-			return failedMessage;
+		public String getResultMessage() {
+			return resultMessage;
 		}
 	
 		@Override
@@ -689,11 +649,11 @@ public class SAML2Int extends SPTestSuite {
 				NodeList mdEDs = metadata.getElementsByTagNameNS(MD.NAMESPACE, MD.ENTITYDESCRIPTOR);
 				// there should be only one entity descriptor
 				if(mdEDs.getLength() > 1){
-					failedMessage = "The provided metadata contained metadata for multiple SAML entities";
+					resultMessage = "The provided metadata contained metadata for multiple SAML entities";
 					return TestStatus.CRITICAL;
 				}
 				else if(mdEDs.getLength() == 0){
-					failedMessage = "The provided metadata contained no metadata for a SAML entity";
+					resultMessage = "The provided metadata contained no metadata for a SAML entity";
 					return TestStatus.CRITICAL;
 				}
 				Node mdED = mdEDs.item(0);
@@ -709,28 +669,35 @@ public class SAML2Int extends SPTestSuite {
 					mdFromURL.normalizeDocument();
 					// check if the document is actually XML
 					if(mdFromURL.getXmlVersion() == null){
+						resultMessage = "The content found at the Well-Known Location was not an XML document";
 						return TestStatus.WARNING;
 					}
-					// chec if the retrieved XML document is the same as the provided metadata
+					// check if the retrieved XML document is the same as the provided metadata
 					else if (mdFromURL.isEqualNode(metadata)){
+						resultMessage = "The Service Provider's metadata is available at the Well-Known Location";
 						return TestStatus.OK;
 					}
 					else{
+						resultMessage = "The metadata found at the Well-Known Location was not the same as the target SP's metadata";
 						return TestStatus.WARNING;
 					}
 				}
 				catch(MalformedURLException malf){
+					resultMessage = "The URL to the Well-Known Location (the URL represented by the Entity ID) was malformed";
 					return TestStatus.WARNING;
 				} catch (ParserConfigurationException e) {
+					resultMessage = "The content found at the Well-Known Location could not be parsed as an XML document due to an incorrectly configured parser";
 					return TestStatus.WARNING;
 				} catch (SAXException e) {
+					resultMessage = "The content found at the Well-Known Location could not be parsed as an XML document";
 					return TestStatus.WARNING;
 				} catch (IOException e) {
+					resultMessage = "The content found at the Well-Known Location could not be accessed (IOException)";
 					return TestStatus.WARNING;
 				}
 			}
 			else {
-				failedMessage = "The test case could not be performed because there was no metadata available";
+				resultMessage = "The test case could not be performed because there was no metadata available";
 				return TestStatus.CRITICAL;
 			}
 		}
@@ -746,21 +713,16 @@ public class SAML2Int extends SPTestSuite {
 	 *
 	 */
 	public class MetadataNameIDFormat implements MetadataTestCase {
-		private String failedMessage = "The Service Provider's metadata does not contain a NameIDFormat element";
+		private String resultMessage;
 		
 		@Override
 		public String getDescription() {
 			return "Test if the Service Provider's metadata contains at least one NameIDFormat element (SHOULD requirement)";
 		}
-	
+
 		@Override
-		public String getSuccessMessage() {
-			return "The Service Provider's metadata contains a NameIDFormat element";
-		}
-	
-		@Override
-		public String getFailedMessage() {
-			return failedMessage;
+		public String getResultMessage() {
+			return resultMessage;
 		}
 	
 		@Override
@@ -769,14 +731,16 @@ public class SAML2Int extends SPTestSuite {
 				NodeList nameidformats = metadata.getElementsByTagNameNS(MD.NAMESPACE, MD.NAMEIDFORMAT);
 				// check if there is at least one NameIDFormat
 				if(nameidformats.getLength() > 0){
+					resultMessage = "The Service Provider's metadata contains a NameIDFormat element";
 					return TestStatus.OK;
 				}
 				else {
+					resultMessage = "The Service Provider's metadata does not contain a NameIDFormat element";
 					return TestStatus.WARNING;
 				}
 			}
 			else {
-				failedMessage = "The test case could not be performed because there was no metadata available";
+				resultMessage = "The test case could not be performed because there was no metadata available";
 				return TestStatus.CRITICAL;
 			}
 		}
@@ -792,35 +756,29 @@ public class SAML2Int extends SPTestSuite {
 	 *
 	 */
 	public class MetadataAttrNameFormatURI implements MetadataTestCase {
-		private String successMessage = "The Service Provider's metadata contains only attributes with NameFormat value of '"+SAMLmisc.NAMEFORMAT_URI+"'";
-		private String failedMessage = "The Service Provider's metadata contains attributes with a NameFormat value other than '"+SAMLmisc.NAMEFORMAT_URI+"'";
+		private String resultMessage;
 		
 		@Override
 		public String getDescription() {
 			return "Test if the Service Provider's metadata contains only one attributes with NameFormat value of '"+SAMLmisc.NAMEFORMAT_URI+"' (MUST requirement)";
 		}
-	
+
 		@Override
-		public String getSuccessMessage() {
-			return successMessage;
-		}
-	
-		@Override
-		public String getFailedMessage() {
-			return failedMessage;
+		public String getResultMessage() {
+			return resultMessage;
 		}
 	
 		@Override
 		public TestStatus checkMetadata(Document metadata) {
 			if(metadata == null){
-				failedMessage = "The test case could not be performed because there was no metadata available";
+				resultMessage = "The test case could not be performed because there was no metadata available";
 				return TestStatus.CRITICAL;
 			}
 			
 			NodeList attrs = metadata.getElementsByTagNameNS(MD.NAMESPACE, SAML.ATTRIBUTE);
 			
 			if (attrs.getLength() == 0){
-				successMessage = "The Service Provider's metadata contains no attributes, so the requirement does not apply";
+				resultMessage = "The Service Provider's metadata contains no attributes, so the requirement does not apply";
 				return TestStatus.OK;
 			}
 
@@ -832,11 +790,11 @@ public class SAML2Int extends SPTestSuite {
 				// check if the nameformat value is URI
 				if(nameformat == null || !nameformat.getNodeValue().equals(SAMLmisc.NAMEFORMAT_URI)){
 					// be more specific in the failed test's message, so it's easier to know what went wrong
-					failedMessage = "The Service Provider's metadata contain an attribute with a NameFormat value other than '"+SAMLmisc.NAMEFORMAT_URI+"'";
+					resultMessage = "The Service Provider's metadata contain an attribute with a NameFormat value other than '"+SAMLmisc.NAMEFORMAT_URI+"'";
 					return TestStatus.WARNING;
 				}
 			}
-			successMessage = "All attributes were configured with the correct NameFormat";
+			resultMessage = "All attributes were configured with the correct NameFormat";
 			return TestStatus.OK;
 		}
 		
@@ -851,21 +809,16 @@ public class SAML2Int extends SPTestSuite {
 	 *
 	 */
 	public class MetadataAttrConsumingService implements MetadataTestCase {
-		private String failedMessage = "The Service Provider's metadata does not contain a AttributeConsumingService element";
+		private String resultMessage;
 		
 		@Override
 		public String getDescription() {
 			return "Test if the Service Provider's metadata contains at least one AttributeConsumingService element (SHOULD requirement)";
 		}
-	
+
 		@Override
-		public String getSuccessMessage() {
-			return "The Service Provider's metadata contains a AttributeConsumingService element";
-		}
-	
-		@Override
-		public String getFailedMessage() {
-			return failedMessage;
+		public String getResultMessage() {
+			return resultMessage;
 		}
 	
 		@Override
@@ -874,14 +827,16 @@ public class SAML2Int extends SPTestSuite {
 				NodeList attrConsServs = metadata.getElementsByTagNameNS(MD.NAMESPACE, MD.ATTRIBUTECONSUMINGSERVICE);
 				// check if there is at least one AttributeConsumingService
 				if(attrConsServs.getLength() > 1){
+					resultMessage = "The Service Provider's metadata contains a AttributeConsumingService element";
 					return TestStatus.OK;
 				}
 				else {
+					resultMessage = "The Service Provider's metadata does not contain a AttributeConsumingService element";
 					return TestStatus.WARNING;
 				}
 			}
 			else {
-				failedMessage = "The test case could not be performed because there was no metadata available";
+				resultMessage = "The test case could not be performed because there was no metadata available";
 				return TestStatus.CRITICAL;
 			}
 		}
@@ -898,21 +853,16 @@ public class SAML2Int extends SPTestSuite {
 	 *
 	 */
 	public class MetadataServiceNameAvailable implements MetadataTestCase {
-		private String failedMessage;
+		private String resultMessage;
 		
 		@Override
 		public String getDescription() {
 			return "Test if the Service Provider's metadata contains at least one ServiceName element (SHOULD requirement)";
 		}
-	
+
 		@Override
-		public String getSuccessMessage() {
-			return "The Service Provider's metadata contains at least one ServiceName element";
-		}
-	
-		@Override
-		public String getFailedMessage() {
-			return failedMessage;
+		public String getResultMessage() {
+			return resultMessage;
 		}
 	
 		@Override
@@ -921,15 +871,16 @@ public class SAML2Int extends SPTestSuite {
 				NodeList servNames = metadata.getElementsByTagNameNS(MD.NAMESPACE, MD.SERVICENAME);
 				// check if there is at least one ServiceName
 				if(servNames.getLength() > 1){
+					resultMessage = "The Service Provider's metadata contains at least one ServiceName element";
 					return TestStatus.OK;
 				}
 				else {
-					failedMessage = "The Service Provider's metadata does not contain any ServiceName elements";
+					resultMessage = "The Service Provider's metadata does not contain any ServiceName elements";
 					return TestStatus.WARNING;
 				}
 			}
 			else {
-				failedMessage = "The test case could not be performed because there was no metadata available";
+				resultMessage = "The test case could not be performed because there was no metadata available";
 				return TestStatus.CRITICAL;
 			}
 		}
@@ -946,7 +897,7 @@ public class SAML2Int extends SPTestSuite {
 	 *
 	 */
 	public class MetadataServiceNameEnglish implements MetadataTestCase {
-		private String failedMessage;
+		private String resultMessage;
 		
 		@Override
 		public String getDescription() {
@@ -954,13 +905,8 @@ public class SAML2Int extends SPTestSuite {
 		}
 	
 		@Override
-		public String getSuccessMessage() {
-			return "The Service Provider's metadata contains at least one English ServiceName with language set to English";
-		}
-	
-		@Override
-		public String getFailedMessage() {
-			return failedMessage;
+		public String getResultMessage() {
+			return resultMessage;
 		}
 	
 		@Override
@@ -974,19 +920,20 @@ public class SAML2Int extends SPTestSuite {
 						Node servName = servNames.item(i);
 						String lang = servName.getAttributes().getNamedItemNS(MD.NAMESPACE_XML, MD.LANG).getNodeValue();
 						if (lang.contains(SAMLmisc.LANG_ENGLISH)){
+							resultMessage = "The Service Provider's metadata contains at least one English ServiceName with language set to English";
 							return TestStatus.OK;
 						}
 					}
-					failedMessage = "The Service Provider's metadata does not contain any ServiceName elements with language set to English";
+					resultMessage = "The Service Provider's metadata does not contain any ServiceName elements with language set to English";
 					return TestStatus.WARNING;
 				}
 				else {
-					failedMessage = "The Service Provider's metadata does not contain any ServiceName elements";
+					resultMessage = "The Service Provider's metadata does not contain any ServiceName elements";
 					return TestStatus.WARNING;
 				}
 			}
 			else {
-				failedMessage = "The test case could not be performed because there was no metadata available";
+				resultMessage = "The test case could not be performed because there was no metadata available";
 				return TestStatus.CRITICAL;
 			}
 		}
@@ -1002,21 +949,16 @@ public class SAML2Int extends SPTestSuite {
 	 *
 	 */
 	public class MetadataHTTPS implements MetadataTestCase {
-		private String failedMessage;
+		private String resultMessage;
 		
 		@Override
 		public String getDescription() {
 			return "Test if the Service Provider uses TLS/SSL for its Assertion Consumer Service endpoints (RECOMMENDATION)";
 		}
-	
+
 		@Override
-		public String getSuccessMessage() {
-			return "The Service Provider uses TLS/SSL for all its Assertion Consumer Service endpoints";
-		}
-	
-		@Override
-		public String getFailedMessage() {
-			return failedMessage;
+		public String getResultMessage() {
+			return resultMessage;
 		}
 	
 		@Override
@@ -1033,38 +975,53 @@ public class SAML2Int extends SPTestSuite {
 						try {
 							URL ACSLocURL = new URL(ACSLoc);
 							if (ACSLocURL.getProtocol().equalsIgnoreCase("https")){
-								HTTPScount++;
+								// connect to the URL to retrieve which cipher is actually used
+								HttpsURLConnection acsConn = (HttpsURLConnection) ACSLocURL.openConnection();
+								acsConn.connect();
+								String cipher = acsConn.getCipherSuite();
+								acsConn.disconnect();
+								// check if cipher belongs to TLS or SSL v3.0 protocol
+								if (cipher.startsWith("TLS_")){
+									// accept all TLS ciphers
+									HTTPScount++;
+								}
+								else if (CipherSuiteNames.sslv3.contains(cipher)){
+									// cipher is part of SSLv3 protocol
+									HTTPScount++;
+								}
 							}
 						} catch (MalformedURLException e) {
-							failedMessage = "The Service Provider's metadata contains at least one malformed Assertion Consumer Service Locations URL";
-							return TestStatus.CRITICAL;
+							logger.debug("The Service Provider's metadata contains at least one malformed Assertion Consumer Service Locations URL", e);						
+						} catch (IOException e) {
+							logger.debug("The Service Provider's metadata could not be accessed", e);
 						}
 					}
 					if (HTTPScount == 0){
-						failedMessage = "The Service Provider neglects using TLS/SSL on all of its Assertion Consumer Service endpoints";
+						resultMessage = "The Service Provider neglects using TLS/SSL on any of its Assertion Consumer Service endpoints";
 						return TestStatus.WARNING;
 					}
 					else if (HTTPScount < ACSs.getLength()){
-						failedMessage = "The Service Provider neglect using TLS/SSL on some of its Assertion Consumer Service endpoints";
+						resultMessage = "The Service Provider neglect using TLS/SSL on some of its Assertion Consumer Service endpoints";
 						return TestStatus.WARNING;
 					}
 					else if (HTTPScount == ACSs.getLength()){
+						resultMessage = "The Service Provider uses TLS/SSL for all its Assertion Consumer Service endpoints";
 						return TestStatus.OK;
 					}
 					else{
 						// HTTPScount is larger than the the length of the ACSs Nodelist, which should never be possible
-						failedMessage = "Error occurred in the MetadataHTTPS test case while checking the ACS URLs";
+						resultMessage = "Error occurred in the MetadataHTTPS test case while checking the ACS URLs";
 						return TestStatus.CRITICAL;
 					}
 					
 				}
 				else {
-					failedMessage = "The Service Provider's metadata does not contain any Assertion Consumer Service elements";
+					resultMessage = "The Service Provider's metadata does not contain any Assertion Consumer Service elements";
 					return TestStatus.WARNING;
 				}
 			}
 			else {
-				failedMessage = "The test case could not be performed because there was no metadata available";
+				resultMessage = "The test case could not be performed because there was no metadata available";
 				return TestStatus.CRITICAL;
 			}
 		}
@@ -1080,8 +1037,7 @@ public class SAML2Int extends SPTestSuite {
 	 *
 	 */
 	public class MetadataEncryptionKey implements MetadataTestCase {
-		private String failedMessage;
-		private String successMessage;
+		private String resultMessage;
 		
 		@Override
 		public String getDescription() {
@@ -1089,13 +1045,8 @@ public class SAML2Int extends SPTestSuite {
 		}
 	
 		@Override
-		public String getSuccessMessage() {
-			return successMessage;
-		}
-	
-		@Override
-		public String getFailedMessage() {
-			return failedMessage;
+		public String getResultMessage() {
+			return resultMessage;
 		}
 	
 		@Override
@@ -1115,7 +1066,7 @@ public class SAML2Int extends SPTestSuite {
 								HTTPScount++;
 							}
 						} catch (MalformedURLException e) {
-							failedMessage = "The Service Provider's metadata contains at least one malformed Assertion Consumer Service Locations URL";
+							resultMessage = "The Service Provider's metadata contains at least one malformed Assertion Consumer Service Locations URL";
 							return TestStatus.CRITICAL;
 						}
 					}
@@ -1131,55 +1082,55 @@ public class SAML2Int extends SPTestSuite {
 									// no attributes found, so no "use" attribute found
 									// without use attribute, key is used for both signing and encryption,
 									// so we have found an encryption key
-									successMessage = "The Service Provider's metadata contains an encryption key";
+									resultMessage = "The Service Provider's metadata contains an encryption key";
 									return TestStatus.OK;
 								}
 								else {
 									Node KDuse = KDattr.getNamedItem(MD.USE);
 									if (KDuse == null){
 										// value should only be "signing" or "encryption" so metadata is invalid
-										failedMessage = "The Service Provider's metadata contains an empty 'use' attribute, which makes the metadata invalid";
+										resultMessage = "The Service Provider's metadata contains an empty 'use' attribute, which makes the metadata invalid";
 										return TestStatus.CRITICAL;
 									}
 									else{
 										String use = KDuse.getNodeValue();
 										if (use.isEmpty()){
 											// value should only be "signing" or "encryption" so metadata is invalid
-											failedMessage = "The Service Provider's metadata contains an empty 'use' attribute, which makes the metadata invalid";
+											resultMessage = "The Service Provider's metadata contains an empty 'use' attribute, which makes the metadata invalid";
 											return TestStatus.CRITICAL;
 										}
 										else if (use.equals(MD.KEYTYPE_ENCRYPTION)){
-											successMessage = "The Service Provider's metadata contains an encryption key";
+											resultMessage = "The Service Provider's metadata contains an encryption key";
 											return TestStatus.OK;
 										}
 									}
 								}
 							}
-							failedMessage = "The Service Provider's metadata does not contain an encryption key and neglects to use TLS/SSL for all of its Assertion Consumer Service endpoints";
+							resultMessage = "The Service Provider's metadata does not contain an encryption key and neglects to use TLS/SSL for all of its Assertion Consumer Service endpoints";
 							return TestStatus.WARNING;
 						}
 						else{
-							failedMessage = "The Service Provider's metadata does not contain any keys and neglects to use TLS/SSL for all of its Assertion Consumer Service endpoints";
+							resultMessage = "The Service Provider's metadata does not contain any keys and neglects to use TLS/SSL for all of its Assertion Consumer Service endpoints";
 							return TestStatus.WARNING;
 						}
 					}
 					else if (HTTPScount == ACSs.getLength()){
-						successMessage = "The Service Provider uses TLS/SSL on all of its Assertion Consumer Service endpoints, so this requirement does not apply";
+						resultMessage = "The Service Provider uses TLS/SSL on all of its Assertion Consumer Service endpoints, so this requirement does not apply";
 						return TestStatus.OK;
 					}
 					else{
 						// HTTPScount is larger than the the length of the ACSs Nodelist, which should never be possible
-						failedMessage = "Error occurred in the MetadataHTTPS test case while checking the ACS URLs";
+						resultMessage = "Error occurred in the MetadataHTTPS test case while checking the ACS URLs";
 						return TestStatus.CRITICAL;
 					}
 				}
 				else {
-					failedMessage = "The Service Provider's metadata does not contain any Assertion Consumer Service elements";
+					resultMessage = "The Service Provider's metadata does not contain any Assertion Consumer Service elements";
 					return TestStatus.WARNING;
 				}
 			}
 			else {
-				failedMessage = "The test case could not be performed because there was no metadata available";
+				resultMessage = "The test case could not be performed because there was no metadata available";
 				return TestStatus.CRITICAL;
 			}
 		}
@@ -1199,27 +1150,22 @@ public class SAML2Int extends SPTestSuite {
 	 * 
 	 */
 	public class MetadataContactInfo implements MetadataTestCase {
-		private String failedMessage;
+		private String resultMessage;
 		
 		@Override
 		public String getDescription() {
 			return "Test if the Service Provider's metadata contains contact information for a support and a technical contact (SHOULD requirement)";
 		}
-	
+
 		@Override
-		public String getSuccessMessage() {
-			return "The Service Provider's metadata contains contact information for both a support and a technical contact";
-		}
-	
-		@Override
-		public String getFailedMessage() {
-			return failedMessage;
+		public String getResultMessage() {
+			return resultMessage;
 		}
 	
 		@Override
 		public TestStatus checkMetadata(Document metadata) {
 			if(metadata == null){
-				failedMessage = "The test case could not be performed because there was no metadata available";
+				resultMessage = "The test case could not be performed because there was no metadata available";
 				return TestStatus.CRITICAL;
 			}
 			
@@ -1227,13 +1173,13 @@ public class SAML2Int extends SPTestSuite {
 			
 			// check if there is not none contact persons
 			if(contactPersons.getLength() == 0){
-				failedMessage = "The Service Provider's metadata contains no Contact Persons";
+				resultMessage = "The Service Provider's metadata contains no Contact Persons";
 				return TestStatus.WARNING;
 			}
 			
 			// check if there is not one contact persons
 			if(contactPersons.getLength() == 1){
-				failedMessage = "The Service Provider's metadata contains only one Contact Person";
+				resultMessage = "The Service Provider's metadata contains only one Contact Person";
 				return TestStatus.WARNING;
 			}
 			
@@ -1252,18 +1198,19 @@ public class SAML2Int extends SPTestSuite {
 			}
 			
 			if (supportFound && technicalFound){
+				resultMessage = "The Service Provider's metadata contains contact information for both a support and a technical contact";
 				return TestStatus.OK;
 			}
 			else if (supportFound){
-				failedMessage = "The Service Provider's metadata contains only support Contact Persons";
+				resultMessage = "The Service Provider's metadata contains only support Contact Persons";
 				return TestStatus.WARNING;
 			}
 			else if (technicalFound){
-				failedMessage = "The Service Provider's metadata contains only technical Contact Persons";
+				resultMessage = "The Service Provider's metadata contains only technical Contact Persons";
 				return TestStatus.WARNING;
 			}
 			else {
-				failedMessage = "The Service Provider's metadata contains no support or technical Contact Persons";
+				resultMessage = "The Service Provider's metadata contains no support or technical Contact Persons";
 				return TestStatus.WARNING;
 			}
 		}
@@ -1278,7 +1225,7 @@ public class SAML2Int extends SPTestSuite {
 	 * 
 	 */
 	public class MetadataContactEmail implements MetadataTestCase {
-		private String failedMessage;
+		private String resultMessage;
 		
 		@Override
 		public String getDescription() {
@@ -1286,19 +1233,14 @@ public class SAML2Int extends SPTestSuite {
 		}
 	
 		@Override
-		public String getSuccessMessage() {
-			return "The Service Provider's metadata contains EmailAddress elements for all its ContactPerson elements";
-		}
-	
-		@Override
-		public String getFailedMessage() {
-			return failedMessage;
+		public String getResultMessage() {
+			return resultMessage;
 		}
 	
 		@Override
 		public TestStatus checkMetadata(Document metadata) {
 			if(metadata == null){
-				failedMessage = "The test case could not be performed because there was no metadata available";
+				resultMessage = "The test case could not be performed because there was no metadata available";
 				return TestStatus.CRITICAL;
 			}
 			
@@ -1306,7 +1248,7 @@ public class SAML2Int extends SPTestSuite {
 			
 			// check if there are contactpersons found
 			if(contactPersons.getLength() == 0){
-				failedMessage = "The Service Provider's metadata contains no Contact Persons";
+				resultMessage = "The Service Provider's metadata contains no Contact Persons";
 				return TestStatus.WARNING;
 			}
 			
@@ -1325,23 +1267,23 @@ public class SAML2Int extends SPTestSuite {
 			}
 			
 			if (emailCount == 0){
-				failedMessage = "The Service Provider's metadata contains no EmailAddress elements for any of its ContactPerson elements";
+				resultMessage = "The Service Provider's metadata contains no EmailAddress elements for any of its ContactPerson elements";
 				return TestStatus.WARNING;
 			}
 			else if (emailCount < contactPersons.getLength()){
-				failedMessage = "The Service Provider's metadata contains EmailAddress elements for some, but not all, of its ContactPerson elements";
+				resultMessage = "The Service Provider's metadata contains EmailAddress elements for some, but not all, of its ContactPerson elements";
 				return TestStatus.WARNING;
 			}
 			else if (emailCount == contactPersons.getLength()){
+				resultMessage = "The Service Provider's metadata contains EmailAddress elements for all its ContactPerson elements";
 				return TestStatus.OK;
 			}
 			else {
 				// emailCount is larger than the the length of the contactPersons Nodelist, which should never be possible
-				failedMessage = "Error occurred in the MetadataContactEmail test case while checking the ContactPerson elements";
+				resultMessage = "Error occurred in the MetadataContactEmail test case while checking the ContactPerson elements";
 				return TestStatus.CRITICAL;
 			}
 		}
-		
 	}
 
 	/**
@@ -1353,7 +1295,7 @@ public class SAML2Int extends SPTestSuite {
 	 *
 	 */
 	public class MetadataNameIDFormatOther implements MetadataTestCase {
-		private String failedMessage;
+		private String resultMessage;
 		
 		@Override
 		public String getDescription() {
@@ -1361,19 +1303,14 @@ public class SAML2Int extends SPTestSuite {
 		}
 	
 		@Override
-		public String getSuccessMessage() {
-			return "The Service Provider's metadata contains only NameIDFormat values of other than '"+SAMLmisc.NAMEID_FORMAT_TRANSIENT+"' or '"+SAMLmisc.NAMEID_FORMAT_PERSISTENT+"' (RECOMMENDATION)";
-		}
-	
-		@Override
-		public String getFailedMessage() {
-			return failedMessage;
+		public String getResultMessage() {
+			return resultMessage;
 		}
 	
 		@Override
 		public TestStatus checkMetadata(Document metadata) {
 			if(metadata == null){
-				failedMessage = "The test case could not be performed because there was no metadata available";
+				resultMessage = "The test case could not be performed because there was no metadata available";
 				return TestStatus.CRITICAL;
 			}
 					
@@ -1381,7 +1318,7 @@ public class SAML2Int extends SPTestSuite {
 			
 			// check if there is at least one NameIDFormat
 			if(nameidformats.getLength() == 0){
-				failedMessage = "The Service Provider's metadata does not contain a NameIDFormat element";
+				resultMessage = "The Service Provider's metadata does not contain a NameIDFormat element";
 				return TestStatus.WARNING;
 			}
 			
@@ -1389,15 +1326,16 @@ public class SAML2Int extends SPTestSuite {
 			for (int i = 0; i < nameidformats.getLength(); i++){
 				String nameidformatValue = nameidformats.item(i).getTextContent();
 				if (nameidformatValue == null){
-					failedMessage = "The Service Provider's metadata contains an empty 'NameIDFormat' element, which makes the metadata invalid";
+					resultMessage = "The Service Provider's metadata contains an empty 'NameIDFormat' element, which makes the metadata invalid";
 					return TestStatus.CRITICAL;
 				}
 				else if(!nameidformatValue.equals(SAMLmisc.NAMEID_FORMAT_TRANSIENT) && !nameidformatValue.equals(SAMLmisc.NAMEID_FORMAT_PERSISTENT)){
 					// SP uses a NameIDFormat other than transient and persistent
-					failedMessage = "The Service Provider's metadata contains at least one NameIDFormat value other than '"+SAMLmisc.NAMEID_FORMAT_TRANSIENT+"' or '"+SAMLmisc.NAMEID_FORMAT_PERSISTENT+"'";
+					resultMessage = "The Service Provider's metadata contains at least one NameIDFormat value other than '"+SAMLmisc.NAMEID_FORMAT_TRANSIENT+"' or '"+SAMLmisc.NAMEID_FORMAT_PERSISTENT+"'";
 					return TestStatus.WARNING;
 				}
 			}
+			resultMessage = "The Service Provider's metadata contains only NameIDFormat values of other than '"+SAMLmisc.NAMEID_FORMAT_TRANSIENT+"' or '"+SAMLmisc.NAMEID_FORMAT_PERSISTENT+"'";
 			return TestStatus.OK;
 		}	
 	}
@@ -1410,8 +1348,7 @@ public class SAML2Int extends SPTestSuite {
 	 *
 	 */
 	public class ConfigAttrLDAP implements ConfigTestCase{
-		private String successMessage;
-		private String failedMessage;
+		private String resultMessage;
 
 		@Override
 		public String getDescription() {
@@ -1419,20 +1356,15 @@ public class SAML2Int extends SPTestSuite {
 		}
 
 		@Override
-		public String getSuccessMessage() {
-			return successMessage;
-		}
-	
-		@Override
-		public String getFailedMessage() {
-			return failedMessage;
+		public String getResultMessage() {
+			return resultMessage;
 		}
 	
 		@Override
 		public TestStatus checkConfig(SPConfiguration config) {
 			ArrayList<SAMLAttribute> attrs = config.getAttributes();
 			if (attrs.size() == 0){
-				successMessage = "No attributes were configured so this test case doesn't apply";
+				resultMessage = "No attributes were configured so this test case doesn't apply";
 				return TestStatus.OK;
 			}
 			else{
@@ -1441,18 +1373,18 @@ public class SAML2Int extends SPTestSuite {
 					// check if the LDAP/X.500 namespace is used
 					if(!attr.getNamespace().equals(SAMLmisc.NAMESPACE_ATTR_X500)){
 						// be more specific in the failed test's message, so it's easier to know what went wrong
-						failedMessage = "The configured SAML attribute does not use the LDAP/X.500 attribute profile";
+						resultMessage = "The configured SAML attribute does not use the LDAP/X.500 attribute profile";
 						return TestStatus.WARNING;
 					}
 					// check if the LDAP/X.500 Encoding attribute is supplied, and if so, if the correct value is filled in
 					/*if (attr.getCustomAttributes().keySet().contains(SAMLmisc.X500_ENCODING)){
 						if (!attr.getCustomAttributes().get(SAMLmisc.X500_ENCODING).equals(SAMLmisc.X500_ENCODING_LDAP)){
-							failedMessage = "The configured SAML attribute has an Encoding attribute with a value other than 'LDAP'";
+							resultMessage = "The configured SAML attribute has an Encoding attribute with a value other than 'LDAP'";
 							return TestStatus.WARNING;
 						}
 					}*/
 				}
-				successMessage = "The attributes that are configured are using the LDAP/X.500 profile";
+				resultMessage = "The attributes that are configured are using the LDAP/X.500 profile";
 				return TestStatus.OK;
 			}
 		}
@@ -1466,8 +1398,7 @@ public class SAML2Int extends SPTestSuite {
 	 *
 	 */
 	public class MetadataAttrLDAP implements MetadataTestCase {
-		private String successMessage;
-		private String failedMessage;
+		private String resultMessage;
 		
 		@Override
 		public String getDescription() {
@@ -1475,26 +1406,21 @@ public class SAML2Int extends SPTestSuite {
 		}
 	
 		@Override
-		public String getSuccessMessage() {
-			return successMessage;
-		}
-	
-		@Override
-		public String getFailedMessage() {
-			return failedMessage;
+		public String getResultMessage() {
+			return resultMessage;
 		}
 
 		@Override
 		public TestStatus checkMetadata(Document metadata) {
 			if(metadata == null){
-				failedMessage = "The test case could not be performed because there was no metadata available";
+				resultMessage = "The test case could not be performed because there was no metadata available";
 				return TestStatus.CRITICAL;
 			}
 			
 			NodeList attrs = metadata.getElementsByTagNameNS(MD.NAMESPACE, SAML.ATTRIBUTE);
 			
 			if (attrs.getLength() == 0){
-				successMessage = "The Service Provider's metadata contains no attributes, so the test case does not apply";
+				resultMessage = "The Service Provider's metadata contains no attributes, so the test case does not apply";
 				return TestStatus.OK;
 			}
 			
@@ -1505,19 +1431,19 @@ public class SAML2Int extends SPTestSuite {
 				// check if the LDAP/X.500 namespace is used
 				if(!attr.getNamespaceURI().equals(SAMLmisc.NAMESPACE_ATTR_X500)){
 					// be more specific in the failed test's message, so it's easier to know what went wrong
-					failedMessage = "A configured SAML attribute does not use the LDAP/X.500 attribute profile";
+					resultMessage = "A configured SAML attribute does not use the LDAP/X.500 attribute profile";
 					return TestStatus.WARNING;
 				}
 				// check if the LDAP/X.500 Encoding attribute is supplied, and if so, if the correct value is filled in
 				Node x500Enc = attr.getAttributes().getNamedItemNS(SAMLmisc.NAMESPACE_ATTR_X500, SAMLmisc.X500_ENCODING);
 				if (x500Enc != null){
 					if (!x500Enc.getNodeValue().equals(SAMLmisc.X500_ENCODING_LDAP)){
-						failedMessage = "A configured SAML attribute has an x500:Encoding attribute with a value other than 'LDAP'";
+						resultMessage = "A configured SAML attribute has an x500:Encoding attribute with a value other than 'LDAP'";
 						return TestStatus.WARNING;
 					}
 				}
 			}
-			successMessage = "The attributes that are configured are using the LDAP/X.500 profile";
+			resultMessage = "The attributes that are configured are using the LDAP/X.500 profile";
 			return TestStatus.OK;
 		}
 		
@@ -1532,8 +1458,7 @@ public class SAML2Int extends SPTestSuite {
 	 *
 	 */
 	public class ConfigAttrValueSimple implements ConfigTestCase{
-		private String successMessage;
-		private String failedMessage;
+		private String resultMessage;
 	
 		@Override
 		public String getDescription() {
@@ -1541,20 +1466,15 @@ public class SAML2Int extends SPTestSuite {
 		}
 	
 		@Override
-		public String getSuccessMessage() {
-			return successMessage;
-		}
-	
-		@Override
-		public String getFailedMessage() {
-			return failedMessage;
+		public String getResultMessage() {
+			return resultMessage;
 		}
 	
 		@Override
 		public TestStatus checkConfig(SPConfiguration config) {
 			ArrayList<SAMLAttribute> attrs = config.getAttributes();
 			if (attrs.size() == 0){
-				successMessage = "No attributes were configured so this test case doesn't apply";
+				resultMessage = "No attributes were configured so this test case doesn't apply";
 				return TestStatus.OK;
 			}
 			else{
@@ -1563,11 +1483,11 @@ public class SAML2Int extends SPTestSuite {
 					// check if the attribute contains XML instead of a simple string value
 					if(attr.getAttributeValue().startsWith("<")){
 						// be more specific in the failed test's message, so it's easier to know what went wrong
-						failedMessage = "The configured SAML attribute does not have a simple string value";
+						resultMessage = "The configured SAML attribute does not have a simple string value";
 						return TestStatus.WARNING;
 					}
 				}
-				successMessage = "The attributes that are configured have simple string values";
+				resultMessage = "The attributes that are configured have simple string values";
 				return TestStatus.OK;
 			}
 		}
@@ -1582,8 +1502,7 @@ public class SAML2Int extends SPTestSuite {
 	 *
 	 */
 	public class MetadataAttrValueSimple implements MetadataTestCase {
-		private String successMessage;
-		private String failedMessage;
+		private String resultMessage;
 		
 		@Override
 		public String getDescription() {
@@ -1591,26 +1510,21 @@ public class SAML2Int extends SPTestSuite {
 		}
 	
 		@Override
-		public String getSuccessMessage() {
-			return successMessage;
-		}
-	
-		@Override
-		public String getFailedMessage() {
-			return failedMessage;
+		public String getResultMessage() {
+			return resultMessage;
 		}
 	
 		@Override
 		public TestStatus checkMetadata(Document metadata) {
 			if(metadata == null){
-				failedMessage = "The test case could not be performed because there was no metadata available";
+				resultMessage = "The test case could not be performed because there was no metadata available";
 				return TestStatus.CRITICAL;
 			}
 			
 			NodeList attrvals = metadata.getElementsByTagNameNS(MD.NAMESPACE, SAML.ATTRIBUTEVALUE);
 			
 			if (attrvals.getLength() == 0){
-				successMessage = "The Service Provider's metadata contains no attributes, so the test case does not apply";
+				resultMessage = "The Service Provider's metadata contains no attributes, so the test case does not apply";
 				return TestStatus.OK;
 			}
 			
@@ -1621,11 +1535,11 @@ public class SAML2Int extends SPTestSuite {
 				// check if the AttributeValue element has only a single child text node
 				if(attrval.getChildNodes().getLength() == 1 && attrval.getChildNodes().item(0).getNodeType() == Node.TEXT_NODE){
 					// be more specific in the failed test's message, so it's easier to know what went wrong
-					failedMessage = "A configured SAML attribute does not have simple string values";
+					resultMessage = "A configured SAML attribute does not have simple string values";
 					return TestStatus.WARNING;
 				}
 			}
-			successMessage = "The attributes that are configured have simple string values";
+			resultMessage = "The attributes that are configured have simple string values";
 			return TestStatus.OK;
 		}
 		
@@ -1641,7 +1555,7 @@ public class SAML2Int extends SPTestSuite {
 	 *
 	 */
 	public class RequestACSURLCanonicalization implements RequestTestCase{
-		private String failedMessage; 
+		private String resultMessage; 
 	
 		@Override
 		public String getDescription() {
@@ -1649,13 +1563,8 @@ public class SAML2Int extends SPTestSuite {
 		}
 
 		@Override
-		public String getSuccessMessage() {
-			return "The Service Provider's Authentication Request's AssertionConsumerServiceURL attribute uses the same canonicalization as in the Service Provider's metadata";
-		}
-
-		@Override
-		public String getFailedMessage() {
-			return failedMessage;
+		public String getResultMessage() {
+			return resultMessage;
 		}
 	
 		@Override
@@ -1666,14 +1575,16 @@ public class SAML2Int extends SPTestSuite {
 				// check if acsURL is available as location in the list of acs's 
 				// when comparing the URL's directly as strings without compensating for canonicalization 
 				for (int i = 0; i < acss.getLength(); i++){
-					if (acss.item(i).getAttributes().getNamedItem(MD.LOCATION).getNodeValue().equals(acsURL.getNodeValue()))
+					if (acss.item(i).getAttributes().getNamedItem(MD.LOCATION).getNodeValue().equals(acsURL.getNodeValue())){
+						resultMessage = "The Service Provider's Authentication Request's AssertionConsumerServiceURL attribute uses the same canonicalization as in the Service Provider's metadata";
 						return TestStatus.OK;
+					}
 				}
-				failedMessage = "The Service Provider's Authentication Request's AssertionConsumerServiceURL attribute did not use the same canonicalization as in the Service Provider's metadata";
+				resultMessage = "The Service Provider's Authentication Request's AssertionConsumerServiceURL attribute did not use the same canonicalization as in the Service Provider's metadata";
 				return TestStatus.WARNING;
 			}
 			else{
-				failedMessage = "The Service Provider's Authentication Request's AssertionConsumerServiceURL attribute was not available";
+				resultMessage = "The Service Provider's Authentication Request's AssertionConsumerServiceURL attribute was not available";
 				return TestStatus.CRITICAL;
 			}
 		}
@@ -1686,21 +1597,16 @@ public class SAML2Int extends SPTestSuite {
 	 *
 	 */
 	public class RequestNameIDPolicy implements RequestTestCase{
-		private String failedMessage; 
+		private String resultMessage; 
 	
 		@Override
 		public String getDescription() {
 			return "Test if the Service Provider's Authentication Request contains a NameIDPolicy with an AllowCreate attribute of true (SHOULD requirement)";
 		}
-	
+
 		@Override
-		public String getSuccessMessage() {
-			return "The Service Provider's Authentication Request contains a NameIDPolicy with an AllowCreate attribute of true";
-		}
-	
-		@Override
-		public String getFailedMessage() {
-			return failedMessage;
+		public String getResultMessage() {
+			return resultMessage;
 		}
 	
 		@Override
@@ -1708,7 +1614,7 @@ public class SAML2Int extends SPTestSuite {
 			NodeList nameIDPolicies = SAMLUtil.fromXML(request).getElementsByTagNameNS(SAMLP.NAMESPACE, SAMLP.NAMEIDPOLICY);
 			// check if the request has any NameIDPolicy elements
 			if (nameIDPolicies.getLength() == 0){
-				failedMessage = "The Service Provider's Authentication Request does not contain a NameIDPolicy";
+				resultMessage = "The Service Provider's Authentication Request does not contain a NameIDPolicy";
 				return TestStatus.WARNING;
 			}
 			// check if at least one of the NameIDPolicy elements has an AllowCreate attribute of true
@@ -1719,10 +1625,11 @@ public class SAML2Int extends SPTestSuite {
 					found = true;
 			}
 			if (found){
+				resultMessage = "The Service Provider's Authentication Request contains a NameIDPolicy with an AllowCreate attribute of true";
 				return TestStatus.OK;
 			}
 			else{
-				failedMessage = "The Service Provider's Authentication Request does not contain a NameIDPolicy with an AllowCreate attribute of true";
+				resultMessage = "The Service Provider's Authentication Request does not contain a NameIDPolicy with an AllowCreate attribute of true";
 				return TestStatus.WARNING;
 			}
 			
@@ -1738,21 +1645,16 @@ public class SAML2Int extends SPTestSuite {
 	 *
 	 */
 	public class RequestNameIDPolicyFormat implements RequestTestCase{
-		private String failedMessage; 
+		private String resultMessage; 
 	
 		@Override
 		public String getDescription() {
 			return "Test if the Service Provider's Authentication Request's NameIDPolicy elements have a Format attribute that is either "+SAMLmisc.NAMEID_FORMAT_TRANSIENT+" nor "+SAMLmisc.NAMEID_FORMAT_PERSISTENT+", if present";
 		}
-	
+
 		@Override
-		public String getSuccessMessage() {
-			return "The Service Provider's Authentication Request's NameIDPolicy elements have a valid Format attribute value";
-		}
-	
-		@Override
-		public String getFailedMessage() {
-			return failedMessage;
+		public String getResultMessage() {
+			return resultMessage;
 		}
 	
 		@Override
@@ -1760,7 +1662,7 @@ public class SAML2Int extends SPTestSuite {
 			NodeList nameIDPolicies = SAMLUtil.fromXML(request).getElementsByTagNameNS(SAMLP.NAMESPACE, SAMLP.NAMEIDPOLICY);
 			// check if the request has any NameIDPolicy elements
 			if (nameIDPolicies.getLength() == 0){
-				failedMessage = "The Service Provider's Authentication Request does not contain a NameIDPolicy";
+				resultMessage = "The Service Provider's Authentication Request does not contain a NameIDPolicy";
 				return TestStatus.WARNING;
 			}
 			// check if all NameIDPolicy elements either have a transient or persistent format attribute, or no format attribute at all
@@ -1768,11 +1670,12 @@ public class SAML2Int extends SPTestSuite {
 				Node format = nameIDPolicies.item(i).getAttributes().getNamedItem(SAMLmisc.FORMAT);
 				if (format != null){
 					if (!format.getNodeValue().equalsIgnoreCase(SAMLmisc.NAMEID_FORMAT_TRANSIENT) && !format.getNodeValue().equalsIgnoreCase(SAMLmisc.NAMEID_FORMAT_PERSISTENT)){
-						failedMessage = "The Service Provider's Authentication Request contains a NameIDPolicy with a Format attribute that is neither "+SAMLmisc.NAMEID_FORMAT_TRANSIENT+" nor "+SAMLmisc.NAMEID_FORMAT_PERSISTENT;
+						resultMessage = "The Service Provider's Authentication Request contains a NameIDPolicy with a Format attribute that is neither "+SAMLmisc.NAMEID_FORMAT_TRANSIENT+" nor "+SAMLmisc.NAMEID_FORMAT_PERSISTENT;
 						return TestStatus.WARNING;
 					}
 				}
 			}	
+			resultMessage = "The Service Provider's Authentication Request's NameIDPolicy elements have a valid Format attribute value";
 			return TestStatus.OK;
 		}
 	}
@@ -1785,7 +1688,7 @@ public class SAML2Int extends SPTestSuite {
 	 *
 	 */
 	public class RequestRequestedAuthnContext implements RequestTestCase{
-		private String successMessage = "The Service Provider's Authentication Request contains a RequestedAuthnContext with a Comparison attribute that is set to exact or omitted";
+		private String resultMessage;
 		
 		@Override
 		public String getDescription() {
@@ -1793,20 +1696,15 @@ public class SAML2Int extends SPTestSuite {
 		}
 	
 		@Override
-		public String getSuccessMessage() {
-			return successMessage;
-		}
-	
-		@Override
-		public String getFailedMessage() {
-			return "The Service Provider's Authentication Request contains a RequestedAuthnContext with a Comparison attribute that is not set to exact";
+		public String getResultMessage() {
+			return resultMessage;
 		}
 	
 		@Override
 		public TestStatus checkRequest(String request, String binding) {
 			NodeList requestedAuthnContexts = SAMLUtil.fromXML(request).getElementsByTagNameNS(SAMLP.NAMESPACE, SAMLP.REQUESTEDAUTHNCONTEXT);
 			if (requestedAuthnContexts.getLength() == 0){
-				successMessage = "There are no RequestedAuthnContext elements in the request so this test case does not apply";
+				resultMessage = "There are no RequestedAuthnContext elements in the request so this test case does not apply";
 				return TestStatus.OK;
 			}
 			// check if all RequestedAuthnContext elements have an exact Comparison attribute, or no Comparison attribute at all
@@ -1814,10 +1712,12 @@ public class SAML2Int extends SPTestSuite {
 				Node comparison = requestedAuthnContexts.item(i).getAttributes().getNamedItem(SAMLP.COMPARISON);
 				if (comparison != null){
 					if (!comparison.getNodeValue().equals(SAMLP.COMPARISON_EXACT)){
+						resultMessage = "The Service Provider's Authentication Request contains a RequestedAuthnContext with a Comparison attribute that is not set to exact";
 						return TestStatus.WARNING;
 					}
 				}
 			}
+			resultMessage = "The Service Provider's Authentication Request contains a RequestedAuthnContext with a Comparison attribute that is set to exact or omitted";
 			return TestStatus.OK;
 		}
 	}

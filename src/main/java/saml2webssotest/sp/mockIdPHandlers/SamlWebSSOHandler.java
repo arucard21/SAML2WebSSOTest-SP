@@ -77,7 +77,7 @@ public class SamlWebSSOHandler extends AbstractHandler{
         else{
         	logger.error("SAML Request sent using an unknown binding (with neither GET nor POST)");
         }
-        
+
         // Show a simple page as response
     	response.setContentType("text/html");
 		response.setStatus(HttpServletResponse.SC_OK);

@@ -13,25 +13,6 @@ import saml2webssotest.common.SAMLAttribute;
 import saml2webssotest.common.standardNames.MD;
 
 public class SPConfiguration {
-	//private final Logger logger = LoggerFactory.getLogger(SPConfiguration.class);
-	/**
-	 * Define the keys used in the SP configuration properties file
-	 */
-/*	private static final String configStartPage = "targetSP.startPage";
-	private static final String configMetadata = "targetSP.metadata";
-	private static final String configLoginStatuscode = "targetSP.login.httpstatuscode";
-	private static final String configLoginURL = "targetSP.login.url";
-	private static final String configLoginCookiePrefix = "targetSP.login.cookie";
-	private static final String configLoginContent = "targetSP.login.content";
-	private static final String configIdPAttributePrefix = "targetSP.idp.attribute";
-	private static final String configInteractionPrefix = "targetSP.interaction";
-	private static final String configInteractionForm = "form";
-	private static final String configInteractionLink = "link";
-	private static final String configInteractionLinkName = "name";
-	private static final String configInteractionLinkText = "text";
-	private static final String configInteractionLinkHref = "href";
-	private static final String preloginPrefix = "prelogin";
-	private static final String postResponsePrefix = "postresponse";*/
 	/**
 	 * Contains the start page of the target SP. It should be the URL where SSO for the mock IdP is started
 	 */
@@ -72,178 +53,19 @@ public class SPConfiguration {
 	 */
 	private ArrayList<Interaction> postResponseInteractions = new ArrayList<Interaction>();
 
-	/**
-	 * Load the configuration of the target SP, provided in JSON format
-	 * 
-	 * @param targetSPConfig is the path to the configuration file of the target SP in JSON format
+	/*
+	 * Simple getters and setters
 	 */
-	public SPConfiguration(){
-		/*
-		if(targetSPConfig != null && !targetSPConfig.isEmpty()){
-			try {
-				Properties propConfig = new Properties();
-				propConfig.load(Files.newBufferedReader(Paths.get(targetSPConfig),Charset.defaultCharset()));
-			
-				Set<String> configKeys = propConfig.stringPropertyNames();
-	
-				for (String key : configKeys) {
-					// add the properties to the config object appropriately
-					if (key.equalsIgnoreCase(configStartPage)){
-						this.setStartPage(propConfig.getProperty(configStartPage));
-					}
-					else if (key.equalsIgnoreCase(configMetadata)) {
-						String mdVal = propConfig.getProperty(configMetadata);
-						this.setMetadata(SAMLUtil.fromXML(mdVal));
-					} 
-					else if (key.equalsIgnoreCase(configLoginStatuscode)){
-						String scProp = propConfig.getProperty(configLoginStatuscode);
-						if(scProp != null && !scProp.isEmpty()){
-							this.setLoginStatuscode(Integer.valueOf(scProp));
-						}
-					}
-					else if (key.equalsIgnoreCase(configLoginContent)){
-						this.setLoginContent(propConfig.getProperty(configLoginContent));
-					}
-					else if (key.equalsIgnoreCase(configLoginURL)){
-						this.setLoginURL(propConfig.getProperty(configLoginURL));
-					}
-					else if (key.startsWith(configLoginCookiePrefix)) {
-						String cookieProp = propConfig.getProperty(key);
-						// make sure the properties file actually has a value for the cookie
-						if (cookieProp != null && !cookieProp.isEmpty()){
-							String[] cookie = cookieProp.split(",");
-							
-							if(cookie.length > 0 && cookie[0] != null){
-								String name = cookie[0].trim();
-								String value;
-								if (cookie.length > 1 && cookie[1] != null){
-									value = cookie[1].trim();
-								}
-								else{
-									value = null;
-								}
-								this.addLoginCookie(name, value);
-							}
-						}
-					}
-					else if (key.startsWith(configIdPAttributePrefix)) {
-						String[] attribute = propConfig.getProperty(key).split(",", -1);
-						String namespace = attribute[0].trim();
-						String prefix = attribute[1].trim();
-						String name = attribute[2].trim();
-						String nameformat = attribute[3].trim();
-						String friendlyname = attribute[4].trim();
-						String value = attribute[5].trim();
-						SAMLAttribute attr = new SAMLAttribute(namespace, prefix, name, nameformat, friendlyname, value);
-						// look for any additional attributes
-						for (int i = 5; i < attribute.length; i++){
-							// get name and value of custom attribute
-							String customName = attribute[i];
-							String customValue;
-							i++;
-							if (i < attribute.length){
-								customValue = attribute[i];
-								attr.addCustomAttribute(customName, customValue);
-							}
-							else{
-								logger.error("Configuration contained custom attribute without value");
-								break;
-							}
-						}
-						this.addAttribute(attr);
-					}
-					else if (key.startsWith(configInteractionPrefix)) {
-						String interactionProp = propConfig.getProperty(key);
-						// split the hierarchy of the property key into separate strings
-						Object interaction;
-						if(key.contains(configInteractionForm)){
-							String[] formNames = interactionProp.split(",");
-							FormInteraction formInter = new FormInteraction(formNames[0].trim(), formNames[1].trim());
-							// add all input fields
-							for(int i = 2; i < formNames.length; i++){
-								//get the name of the input field
-								String name = formNames[i];
-								// get the corresponding value of the input field
-								i++;
-								String value = "";
-								// make sure you can actually access the value of the input field
-								if(i<formNames.length) value = formNames[i];
-								// add the input to the FormInteraction object
-								formInter.addInput(name, value);
-							}
-							// store the interaction in the object so it can be stored in the configuration
-							interaction = formInter;
-						}
-						else if(key.contains(configInteractionLink)){
-							String[] linkValues = interactionProp.split(",");
-							// check how to look up the link and create the link interaction accordingly
-							if(linkValues[0].contains(configInteractionLinkName))
-								interaction = (LinkInteraction) new LinkInteraction(LinkInteraction.String.NAME, linkValues[1].trim());
-							else if(linkValues[0].contains(configInteractionLinkText))
-								interaction = (LinkInteraction) new LinkInteraction(LinkInteraction.String.TEXT, linkValues[1].trim());
-							else if(linkValues[0].contains(configInteractionLinkHref))
-								interaction = (LinkInteraction) new LinkInteraction(LinkInteraction.String.HREF, linkValues[1].trim());
-							else{
-								logger.error("Unknown interaction link lookup type in target SP configuration file");
-								interaction = null;
-							}
-						}
-						else{
-							logger.error("Unknown interaction type in target SP configuration file");
-							interaction = null;
-						}
-						
-						if(key.contains(preloginPrefix)){
-							this.addPreloginInteractions(interaction);
-						}
-						else if(key.contains(postResponsePrefix)){
-							this.addPreloginInteractions(interaction);
-						}
-						else{
-							logger.error("Unknown interaction point in target SP configuration file");
-						}
-					}
-					else {
-						logger.error("Unknown property in target SP configuration file");
-					}
-				}
-			} catch (IOException e) {
-				logger.error("I/O error occurred while accessing the configuration file", e);
-			}
-		}		
-		*/
-	}
-	/**
-	 * Add a single cookie to the list
-	 * 
-	 * @param cookieName is the name of the cookie
-	 * @param cookieValue is the value of the cookie
-	 */
-	/*public void addLoginCookie(String cookieName, String cookieValue) {
-		this.loginCookies.put(cookieName, cookieValue);
-	}*/
-	
-	/**
-	 * Add a single attribute to the list
-	 * 
-	 * @param attribute is the SAMLAttribute that should be added
-	 */
-	public void addAttribute(SAMLAttribute attribute) {
-		this.attributes.add(attribute);
-	}
 	
 	public String getStartPage() {
 		return startPage;
 	}
-	
 	public void setStartPage(String startPage) {
 		this.startPage = startPage;
 	}
-	
 	public Document getMetadata() {
 		return metadata;
 	}
-	
 	public void setMetadata(Document md) {
 		metadata = md;
 	}
@@ -277,7 +99,23 @@ public class SPConfiguration {
 	public void setAttributes(ArrayList<SAMLAttribute> attributes) {
 		this.attributes = attributes;
 	}
-	
+	public ArrayList<Interaction> getPreLoginInteractions() {
+		return preLoginInteractions;
+	}
+	public void setPreLoginInteractions(ArrayList<Interaction> preLoginInteractions) {
+		this.preLoginInteractions = preLoginInteractions;
+	}
+	public ArrayList<Interaction> getPostResponseInteractions() {
+		return postResponseInteractions;
+	}
+	public void setPostResponseInteractions(ArrayList<Interaction> postResponseInteractions) {
+		this.postResponseInteractions = postResponseInteractions;
+	}
+
+	/*
+	 * Utility methods
+	 */
+
 	/**
 	 * Retrieve all nodes with the requested tag name from the metadata
 	 * 
@@ -312,9 +150,9 @@ public class SPConfiguration {
 			return null;
 		
 		ArrayList<String> resultAttributes = new ArrayList<String>();
-		NodeList allACS = metadata.getElementsByTagNameNS(MD.NAMESPACE, tagName);
-		for (int i = 0; i < allACS.getLength(); i++){
-			Node acs = allACS.item(i);
+		NodeList allNodes = metadata.getElementsByTagNameNS(MD.NAMESPACE, tagName);
+		for (int i = 0; i < allNodes.getLength(); i++){
+			Node acs = allNodes.item(i);
 			resultAttributes.add(acs.getAttributes().getNamedItem(attrName).getNodeValue());
 		}
 		return resultAttributes;
@@ -332,9 +170,9 @@ public class SPConfiguration {
 	 * @return the value of the requested attribute, or null if none or multiple attributes were found
 	 */
 	public String getMDAttribute(String tagName, String attrName) {
-		List<String> allIDs = getMDAttributes(tagName, attrName);
-		if(allIDs.size() == 1){
-			return allIDs.get(0);
+		List<String> allAttrs = getMDAttributes(tagName, attrName);
+		if(allAttrs.size() == 1){
+			return allAttrs.get(0);
 		}
 		else {
 			return null;
@@ -343,14 +181,14 @@ public class SPConfiguration {
 	
 	/**
 	 * Retrieve the location of the AssertionConsumerService for a specific
-	 * binding for the SP that is being tested from the metadata
+	 * binding for the SP that is being tested from the metadata.
 	 * 
 	 * @param binding specifies for which binding the location should be retrieved
-	 * @return the location for the requested binding or null if it is not found
+	 * @return the location for the requested binding or null if no matching ACS could be found
 	 */
 	public String getMDACSLocation(String binding) {
 		ArrayList<Node> acsNodes = (ArrayList<Node>) getMDNodes(MD.ASSERTIONCONSUMERSERVICE);
-		// check all ACS nodes for the requested binding
+		// look for ACS with specified binding
 		for (Node acs : acsNodes) {
 			if (acs.getAttributes().getNamedItem(MD.BINDING)
 					.getNodeValue().equalsIgnoreCase(binding))
@@ -361,28 +199,100 @@ public class SPConfiguration {
 		// the requested binding could not be found
 		return null;
 	}
+	
 	/**
-	 * @return the preloginInteractions
+	 * Retrieve the location of the AssertionConsumerService with a specific index
+	 * for the SP that is being tested from the metadata.
+	 * 
+	 * @param index specifies the index of the ACS for which the location should be retrieved
+	 * @return the location of the ACS with the requested index or null if no matching ACS could be found
 	 */
-	public ArrayList<Interaction> getPreLoginInteractions() {
-		return preLoginInteractions;
+	public String getMDACSLocation(int index) {
+		ArrayList<Node> acsNodes = (ArrayList<Node>) getMDNodes(MD.ASSERTIONCONSUMERSERVICE);
+		// look for ACS with specified index
+		for (Node acs : acsNodes) {
+			int nodeIndex = Integer.parseInt(acs.getAttributes().getNamedItem(MD.INDEX).getNodeValue());
+			if (nodeIndex == index)
+				// return the location for the ACS with the requested index
+				return acs.getAttributes().getNamedItem(MD.LOCATION).getNodeValue();
+		}
+		// the requested index could not be found
+		return null;
 	}
+	
 	/**
-	 * @param preloginInteraction is the interaction object that should be added to the preloginInteractions
+	 * Retrieve the binding of the AssertionConsumerService with a specific index
+	 * for the SP that is being tested from the metadata.
+	 * 
+	 * @param index specifies the index of the ACS for which the binding should be retrieved
+	 * @return the binding of the ACS with the requested index or null if no matching ACS could be found
 	 */
-	public void setPreLoginInteractions(ArrayList<Interaction> preLoginInteractions) {
-		this.preLoginInteractions = preLoginInteractions;
+	public String getMDACSBinding(int index) {
+		ArrayList<Node> acsNodes = (ArrayList<Node>) getMDNodes(MD.ASSERTIONCONSUMERSERVICE);
+		// look for ACS with specified index
+		for (Node acs : acsNodes) {
+			int nodeIndex = Integer.parseInt(acs.getAttributes().getNamedItem(MD.INDEX).getNodeValue());
+			if (nodeIndex == index)
+				// return the location for the ACS with the requested index
+				return acs.getAttributes().getNamedItem(MD.BINDING).getNodeValue();
+		}
+		// the requested index could not be found
+		return null;
 	}
+
 	/**
-	 * @return the postresponseInteractions
+	 * Retrieve the location of the default AssertionConsumerService 
+	 * (as defined by [SAMLMeta] 2.2.3). 
+	 * 
+	 * @return the location of the default AssertionConsumerService
 	 */
-	public ArrayList<Interaction> getPostResponseInteractions() {
-		return postResponseInteractions;
+	public String getDefaultMDACSLocation(){
+		ArrayList<Node> acsNodes = (ArrayList<Node>) getMDNodes(MD.ASSERTIONCONSUMERSERVICE);
+		
+		String firstACSLocation = null;
+		// check if one of the nodes is set as default and return its location
+		for (Node acs : acsNodes) {
+			if (acs.getAttributes().getNamedItem(MD.ISDEFAULT) != null) {
+				if(acs.getAttributes().getNamedItem(MD.ISDEFAULT).getNodeValue().equalsIgnoreCase("true")){
+					return acs.getAttributes().getNamedItem(MD.LOCATION).getNodeValue();
+				}
+			}
+			else{
+				if (firstACSLocation == null){
+					// save the first ACS found without isDefault attribute so it can be returned later
+					firstACSLocation = acs.getAttributes().getNamedItem(MD.LOCATION).getNodeValue();
+				}
+			}
+		}
+		// no ACS found with isDefault set to true, so return the first ACS without isDefault attribute
+		return firstACSLocation;
 	}
+	
 	/**
-	 * @param postresponseInteraction is the interaction object that should be added to the postresponseInteractions
+	 * Retrieve the binding of the default AssertionConsumerService 
+	 * (as defined by [SAMLMeta] 2.2.3). 
+	 * 
+	 * @return the binding of the default AssertionConsumerService
 	 */
-	public void setPostResponseInteractions(ArrayList<Interaction> postResponseInteractions) {
-		this.postResponseInteractions = postResponseInteractions;
+	public String getDefaultMDACSBinding(){
+		ArrayList<Node> acsNodes = (ArrayList<Node>) getMDNodes(MD.ASSERTIONCONSUMERSERVICE);
+		
+		String firstACSLocation = null;
+		// check if one of the nodes is set as default and return its location
+		for (Node acs : acsNodes) {
+			if (acs.getAttributes().getNamedItem(MD.ISDEFAULT) != null) {
+				if(acs.getAttributes().getNamedItem(MD.ISDEFAULT).getNodeValue().equalsIgnoreCase("true")){
+					return acs.getAttributes().getNamedItem(MD.BINDING).getNodeValue();
+				}
+			}
+			else{
+				if (firstACSLocation == null){
+					// save the first ACS found without isDefault attribute so it can be returned later
+					firstACSLocation = acs.getAttributes().getNamedItem(MD.BINDING).getNodeValue();
+				}
+			}
+		}
+		// no ACS found with isDefault set to true, so return the first ACS without isDefault attribute
+		return firstACSLocation;
 	}
 }

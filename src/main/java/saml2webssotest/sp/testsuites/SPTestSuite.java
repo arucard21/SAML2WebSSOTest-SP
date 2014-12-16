@@ -4,7 +4,6 @@ import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.StringReader;
-import java.net.URL;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -91,13 +90,6 @@ public abstract class SPTestSuite implements TestSuite {
 	 * @return the EntityID for the mock IdP
 	 */
 	public abstract String getmockIdPEntityID();
-
-	/**
-	 * Retrieves the URL for the mock IdP
-	 * 
-	 * @return the URL for the mock IdP
-	 */
-	public abstract URL getMockIdPURL();
 	
 	/**
 	 * Get the IdP metadata that should be used in the mock IdP for this test suite.

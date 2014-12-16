@@ -1,8 +1,6 @@
 package saml2webssotest.sp;
 
 import java.io.IOException;
-import java.lang.reflect.InvocationTargetException;
-import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.charset.Charset;
@@ -24,15 +22,13 @@ import org.apache.http.client.ClientProtocolException;
 import org.apache.log4j.BasicConfigurator;
 import org.apache.log4j.PropertyConfigurator;
 import org.eclipse.jetty.server.Server;
-import org.eclipse.jetty.server.handler.ContextHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
+import org.w3c.dom.Node;
 
-import com.gargoylesoftware.htmlunit.ElementNotFoundException;
 import com.gargoylesoftware.htmlunit.FailingHttpStatusCodeException;
 import com.gargoylesoftware.htmlunit.HttpMethod;
-import com.gargoylesoftware.htmlunit.Page;
 import com.gargoylesoftware.htmlunit.WebClient;
 import com.gargoylesoftware.htmlunit.WebRequest;
 import com.gargoylesoftware.htmlunit.html.HtmlPage;
@@ -42,9 +38,7 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonSyntaxException;
 
 import saml2webssotest.common.Interaction;
-import saml2webssotest.common.FormInteraction;
 import saml2webssotest.common.InteractionDeserializer;
-import saml2webssotest.common.LinkInteraction;
 import saml2webssotest.common.MetadataDeserializer;
 import saml2webssotest.common.StringPair;
 import saml2webssotest.common.SAMLUtil;
@@ -53,6 +47,7 @@ import saml2webssotest.common.TestRunnerUtil;
 import saml2webssotest.common.TestStatus;
 import saml2webssotest.common.TestSuite.TestCase;
 import saml2webssotest.common.TestSuite.MetadataTestCase;
+import saml2webssotest.common.standardNames.SAMLP;
 import saml2webssotest.common.standardNames.SAMLmisc;
 import saml2webssotest.sp.mockIdPHandlers.SamlWebSSOHandler;
 import saml2webssotest.sp.testsuites.SPTestSuite;
@@ -117,9 +112,6 @@ public class SPTestRunner {
 			BasicConfigurator.configure();
 		}
 		
-		// create the TestRunner object
-		SPTestRunner runner = new SPTestRunner();
-		
 		// define the command-line options
 		Options options = new Options();
 		options.addOption("h", "help", false, "Print this help message");
@@ -171,6 +163,12 @@ public class SPTestRunner {
 						System.exit(0);
 					}
 
+					// configure the browser that will be used during testing
+					browser.getOptions().setRedirectEnabled(true);
+					if (command.hasOption("insecure")) {
+						browser.getOptions().setUseInsecureSSL(true);
+					}
+					
 					// load target SP config
 					if (command.hasOption("spconfig")) {
 						spConfig = new GsonBuilder()
@@ -183,70 +181,27 @@ public class SPTestRunner {
 						// use empty SP configuration
 						spConfig = new SPConfiguration();
 					}
-
-					// create the mock IdP and add all required handlers
-					mockIdP = new Server(
-							new InetSocketAddress(
-										testsuite.getMockIdPURL().getHost(),
-										testsuite.getMockIdPURL().getPort()));
 					
-					// add a context handler to properly handle the sso path
-					ContextHandler context = new ContextHandler();
-					context.setContextPath(testsuite.getMockIdPURL().getPath());
-					mockIdP.setHandler(context);
-
-					// add the SAML Request handler for all services
-					mockIdP.setHandler(new SamlWebSSOHandler());
-					// add the SAML Response handler
-
+					// initialize the mocked server
+					mockIdP = TestRunnerUtil.newMockServer(testsuite.getMockServerURL(), new SamlWebSSOHandler());
 					// start the mock IdP
 					mockIdP.start();
-					
-					// TODO: possibly use Reflections for easier access to test cases
 
 					// load the requested test case(s)
-					String tc_string = command.getOptionValue("testcase");
-					if (tc_string != null && !tc_string.isEmpty()) {
-						Class<?> tc_class = Class.forName(testsuite.getClass().getName() + "$" + tc_string);
-						Object testcaseObj = tc_class.getConstructor(testsuite.getClass()).newInstance(testsuite);
-						// run test
-						if (testcaseObj instanceof TestCase) {
-							TestCase testcase = (TestCase) testcaseObj;
-							TestStatus status = runner.runTest(testcase);
-							String message = "";
-							if (status == TestStatus.OK){
-								message = testcase.getSuccessMessage();
-							}
-							else{
-								message = testcase.getFailedMessage();
-							}
-							TestResult result = new TestResult(status, message);
-							result.setName(testcase.getClass().getSimpleName());
-							result.setDescription(testcase.getDescription());
-							testresults.add(result);
-						} else {
-							logger.error("Provided class was not a subclass of interface TestCase");
-						}
-					} else {
-						// run all test cases from the test suite, ignore
-						// classes that are not subclasses of TestCase
-						Class<?>[] allTCs = ts_class.getDeclaredClasses();
-						for (Class<?> testcaseClass : allTCs) {
-							TestCase curTestcase = (TestCase) testcaseClass.getConstructor(testsuite.getClass()).newInstance(testsuite);
-							TestStatus status = runner.runTest(curTestcase);
-							String message = "";
-							if (status == TestStatus.OK){
-								message = curTestcase.getSuccessMessage();
-							}
-							else{
-								message = curTestcase.getFailedMessage();
-							}
-							TestResult result = new TestResult(status, message);
-							result.setName(curTestcase.getClass().getSimpleName());
-							result.setDescription(curTestcase.getDescription());
-							//outputTestResult(result);
-							testresults.add(result);
-						}
+					String testcaseName = command.getOptionValue("testcase");
+					
+					// get the test case(s) we want to run
+					ArrayList<TestCase> testcases = TestRunnerUtil.getTestCases(testsuite, testcaseName);
+
+					// run the test case(s) from the test suite
+					for(TestCase testcase: testcases){
+						TestStatus status = runTest(testcase);
+						
+						TestResult result = new TestResult(status, testcase.getResultMessage());
+						result.setName(testcase.getClass().getSimpleName());
+						result.setDescription(testcase.getDescription());
+						// add this test result to the list of test results
+						testresults.add(result);
 					}
 					TestRunnerUtil.outputTestResults(testresults);
 				} else {
@@ -262,22 +217,10 @@ public class SPTestRunner {
 			testresults.add(new TestResult(TestStatus.CRITICAL, ""));
 		} catch (ClassCastException e) {
 			logger.error("The test suite or case was not an instance of TestSuite", e);
-		} catch (InstantiationException e) {
-			logger.error("Could not instantiate an instance of the test suite or case", e);
-		} catch (IllegalAccessException e) {
-			logger.error("Could not access the test suite class or test case class", e);
 		} catch (IOException e) {
 			logger.error("I/O error occurred when creating HTTP server", e);
 		} catch (ParseException e) {
 			logger.error("Parsing of the command-line arguments has failed", e);
-		} catch (IllegalArgumentException e) {
-			logger.error("Could not create a new instance of the test case", e);
-		} catch (InvocationTargetException e) {
-			logger.error("Could not create a new instance of the test case", e);
-		} catch (NoSuchMethodException e) {
-			logger.error("Could not retrieve the constructor of the test case class", e);
-		} catch (SecurityException e) {
-			logger.error("Could not retrieve the constructor of the test case class", e);
 		} catch (JsonSyntaxException jsonExc) {
 			logger.error("The JSON configuration file did not have the correct syntax", jsonExc);
 		} catch (Exception e) {
@@ -304,13 +247,10 @@ public class SPTestRunner {
 	 *            target SP
 	 * @return a string representing the test result in JSON format.
 	 */
-	private TestStatus runTest(TestCase testcase) {
+	private static TestStatus runTest(TestCase testcase) {
 		logger.info("Running testcase: "+ testcase.getClass().getSimpleName());
 		
-		browser.getOptions().setRedirectEnabled(true);
-		if (command.hasOption("insecure")) {
-			browser.getOptions().setUseInsecureSSL(true);
-		}
+		
 		// run the test case according to what type of test case it is
 		if (testcase instanceof ConfigTestCase) {
 			ConfigTestCase cfTestcase = (ConfigTestCase) testcase;
@@ -332,19 +272,33 @@ public class SPTestRunner {
 		} else if (testcase instanceof RequestTestCase) {
 			RequestTestCase reqTC = (RequestTestCase) testcase;
 			// make the SP send the AuthnRequest by starting an SP-initiated login attempt
-			retrieveLoginPage(true); 
-
-			// the SAML Request should have been retrieved by the mock IdP and
-			// set here during the execute() method
-			if (samlRequest != null && !samlRequest.isEmpty()) {
-				logger.trace(samlRequest);
-				/**
-				 * Check the SAML Request according to the specifications of the
-				 * test case and return the status of the test
-				 */
-				return reqTC.checkRequest(samlRequest,samlRequestBinding);
-			} else {
-				logger.error("Could not retrieve the SAML Request that was sent by the target SP");
+			try {
+				TestRunnerUtil.interactWithPage(browser.getPage(spConfig.getStartPage()), spConfig.getPreLoginInteractions());
+			
+				//retrieveLoginPage(true); 
+			
+				// the SAML Request should have been retrieved by the mock IdP and
+				// set here during the execute() method
+				if (samlRequest != null && !samlRequest.isEmpty()) {
+					logger.debug("Received the SAML request");
+					logger.trace(samlRequest);
+					/**
+					 * Check the SAML Request according to the specifications of the
+					 * test case and return the status of the test
+					 */
+					return reqTC.checkRequest(samlRequest,samlRequestBinding);
+				} else {
+					logger.error("Could not retrieve the SAML Request that was sent by the target SP");
+					return TestStatus.CRITICAL;
+				}
+			} catch (FailingHttpStatusCodeException e) {
+				logger.error("The start page returned a failing HTTP status code", e);
+				return TestStatus.CRITICAL;
+			} catch (MalformedURLException e) {
+				logger.error("The URL for the start page was malformed", e);
+				return TestStatus.CRITICAL;
+			} catch (IOException e) {
+				logger.error("An I/O exception occurred while trying to access the start page", e);
 				return TestStatus.CRITICAL;
 			}
 		} else if (testcase instanceof LoginTestCase) {
@@ -358,126 +312,82 @@ public class SPTestRunner {
 			for (LoginAttempt login : logins) {
 				// start login attempt with target SP
 				try {
-					// retrieve the login page, thereby sending the AuthnRequest to the mock IdP
-					retrieveLoginPage(login.isSPInitiated());
-					
+					URL acsURL;
+					String binding = null;
+					// determine the ACS location and binding, depending on the received SAML Request
 					if(login.isSPInitiated()){
+						// retrieve the login page, thereby sending the AuthnRequest to the mock IdP
+						TestRunnerUtil.interactWithPage(browser.getPage(spConfig.getStartPage()), spConfig.getPreLoginInteractions());
 						// check if the saml request has correctly been retrieved by the mock IdP 
 						// if not, most likely caused by trying to use artifact binding
 						if (samlRequest == null || samlRequest.isEmpty()) {
 							logger.error("Could not retrieve the SAML request");
 							return null;
 						}
+						// try to retrieve the location and binding of the ACS where this should be sent from the request
+						String acsLoc = getRequestACSURL();
+						if (acsLoc == null){
+							// no ACS location found in request, check for ACS index
+							int acsIndex = getRequestACSIndex();
+							if ( acsIndex >= 0 ){
+								// ACS index found, so set location and binding accordingly
+								acsLoc = spConfig.getMDACSLocation(acsIndex);
+								binding = spConfig.getMDACSBinding(acsIndex);
+							}
+							else{
+								// no ACS location or index found in request, so just use default
+								acsLoc = spConfig.getDefaultMDACSLocation();
+								binding = spConfig.getDefaultMDACSBinding();
+							}
+						}
+						else{
+							// found ACS location in request, must also have a binding then
+							binding = getRequestACSBinding();
+						}
+						acsURL = new URL(acsLoc);
+					}
+					else{
+						// go directly to the IdP page without an AuthnRequest (for idp-initiated authentication)
+						TestRunnerUtil.interactWithPage(browser.getPage(testsuite.getMockServerURL().toString()), new ArrayList<Interaction>());
+						// retrieve the location of the default ACS where this should be sent
+						acsURL = new URL(spConfig.getDefaultMDACSLocation());
+						binding = spConfig.getDefaultMDACSBinding();
+						
 					}
 					// create HTTP request to send the SAML response to the SP's ACS url
-					URL acsURL = new URL(spConfig.getMDACSLocation(SAMLmisc.BINDING_HTTP_POST));
+					String samlResponse = login.getResponse(samlRequest);
 					WebRequest sendResponse = new WebRequest(acsURL, HttpMethod.POST);
 					ArrayList<NameValuePair> postParameters = new ArrayList<NameValuePair>();
-					postParameters.add(new NameValuePair(SAMLmisc.URLPARAM_SAMLRESPONSE_POST, SAMLUtil.encodeSamlMessageForPost(login.getResponse(samlRequest))));
+					NameValuePair samlresponse;
+					// set the SAML URL parameter according to the requested binding
+					if (binding.equalsIgnoreCase(SAMLmisc.BINDING_HTTP_POST)){
+						samlresponse = new NameValuePair(SAMLmisc.URLPARAM_SAMLRESPONSE_POST, SAMLUtil.encodeSamlMessageForPost(samlResponse));
+					}
+					else if (binding.equalsIgnoreCase(SAMLmisc.BINDING_HTTP_ARTIFACT)){
+						// TODO: support artifact binding
+						//samlresponse = new NameValuePair(SAMLmisc.URLPARAM_SAMLARTIFACT, SAMLUtil.encodeSamlMessageForArtifact(samlResponse));
+						logger.debug("Response needs to be sent with Artifact binding, this is not yet supported");
+						return TestStatus.CRITICAL;
+					}
+					else{
+						logger.error("An invalid binding was requested for sending the Response to the SP");
+						return TestStatus.CRITICAL;
+					}
+					postParameters.add(samlresponse);
 					sendResponse.setRequestParameters(postParameters);
+					
+					logger.debug("Sending SAML Response to the SP");
+					logger.trace(samlResponse);
 					// send the SAML response to the SP
 					HtmlPage responsePage = browser.getPage(sendResponse);
 					
-					boolean statuscodeMatch = false;
-					boolean urlMatch = false;
-					boolean contentMatch = false;
-					boolean cookiesMatch = false;
-
-					// check the HTTP Status code of the page to see if the login was successful
-					if (spConfig.getLoginStatuscode() == 0) {
-						// do not match against status code
-						statuscodeMatch = true;
-					} 
-					else if (responsePage.getWebResponse().getStatusCode() == spConfig.getLoginStatuscode()) {
-						statuscodeMatch = true;
-					}
-					else{
-						logger.debug("Could not match the following URL against the returned page:\n"+responsePage.getWebResponse().getStatusCode());
-					}
+					logger.trace("The received page:\n"+responsePage.getWebResponse().getContentAsString());
 					
-					// check the URL of the page to see if the login was successful
-					if (spConfig.getLoginURL() == null) {
-						// do not match against url
-						urlMatch = true;
-					} 
-					else {
-						URL responseURL = responsePage.getUrl();
-						URL matchURL = new URL(spConfig.getLoginURL());
-						// check if the current location matches what we expect when we are correctly logged in 
-						if (responseURL.equals(matchURL)) {
-							urlMatch = true;
-						}
-						else{
-							logger.debug("Could not match the URL "+matchURL.toString()+" against the returned page's URL "+responseURL.toString());
-						}
-					}
-
-					// check if the page matches what we expect to see when we log in
-					String page = responsePage.getWebResponse().getContentAsString();
-					logger.trace("The received page:\n"+page);
-					if (spConfig.getLoginContent() == null) {
-						// do no match against page content
-						contentMatch = true;
-					} else {	
-						String contentRegex = spConfig.getLoginContent();
-						// compile the regex so it allows the dot character to
-						// also match new-line characters,
-						// which is useful since this is a multi-line string
-						Pattern regexP = Pattern.compile(contentRegex, Pattern.DOTALL);
-						Matcher regexM = regexP.matcher(page);
-						if (regexM.find()) {
-							contentMatch = true;
-						}
-						else{
-							logger.debug("Could not match the following regex against the returned page:\n"+contentRegex);
-						}
-					}
-					// check the cookies
-					if (spConfig.getLoginCookies().size() <= 0) {
-						// do not check cookies
-						cookiesMatch = true;
-					} else {
-						ArrayList<StringPair> checkCookies = spConfig.getLoginCookies();
-						Set<Cookie> sessionCookies = browser.getCookies(acsURL);
-						// initialize the match to true and set it to false if we can't match a cookie
-						cookiesMatch = true;
-						// only check for cookies if we actually have some to match against
-						if (checkCookies.size() > 0){
-							boolean found = false;
-							// check if each user-supplied cookie name and value is available
-							for (StringPair checkCookie : checkCookies) {
-								String name = checkCookie.getName();
-								String value = checkCookie.getValue();
-								// iterate through the session cookies to see if it contains the the checked cookie
-								for (Cookie sessionCookie : sessionCookies) {
-									String cookieName = sessionCookie.getName();
-									String cookieValue = sessionCookie.getValue();
-									// compare the cookie names
-									if (cookieName.equalsIgnoreCase(name)) {
-										// if no value given, you don't need to compare it
-										if (value == null || value.isEmpty()) {
-											found = true;
-											break;
-										} else {
-											if (cookieValue.equalsIgnoreCase(value)) {
-												found = true;
-												break;
-											}
-										}
-									}
-								}
-								// this cookie could not be found, so we could not find a match
-								if (!found){
-									logger.debug("Could not match the following cookie against the returned page:\n"+checkCookie.getName()+", "+checkCookie.getValue());
-									cookiesMatch = false;
-									break;
-								}
-							}
-						}
-					}
 					// the login succeeded when all configured matches are found
-					if (statuscodeMatch && urlMatch && contentMatch && cookiesMatch) {
-						// check if the login was actually expected to succeed
+					if (checkLoginHTTPStatusCode(responsePage) 
+							&& checkLoginURL(responsePage) 
+							&& checkLoginContent(responsePage) 
+							&& checkLoginCookies(responsePage)) {
 						testResults.add(new Boolean(true));
 					}
 					else{
@@ -507,81 +417,6 @@ public class SPTestRunner {
 			logger.error("Trying to run an unknown type of test case");
 			return null;
 		}
-	}
-
-	/**
-	 * Retrieves the login page from the SP, thereby sending the SP's AuthnRequest to
-	 * the mock IdP. 
-	 * 
-	 * @return the login page, or null if the login page could not be retrieved
-	 */
-	private static Page retrieveLoginPage(boolean spInitiated) {
-		// start login attempt with target SP
-		try {
-			// create a URI of the start page (which also checks the validity of the string as URI)
-			URL loginURL;
-			if (spInitiated) {
-				// login from the SP's start page
-				loginURL = new URL(spConfig.getStartPage());
-			
-				Page retrievedPage = browser.getPage(loginURL);
-	
-				// interact with the login page in order to get logged in
-				ArrayList<Interaction> interactions = spConfig.getPreLoginInteractions();
-				// execute all interactions
-				for(Interaction interaction : interactions){
-					if(retrievedPage instanceof HtmlPage){
-						// cast the Page to an HtmlPage so we can interact with it
-						HtmlPage loginPage = (HtmlPage) retrievedPage;
-						logger.trace("Login page");
-						logger.trace(loginPage.getWebResponse().getContentAsString());
-					
-						// cast the interaction to the correct class
-						if(interaction instanceof FormInteraction) {
-							FormInteraction formInteraction = (FormInteraction) interaction;
-							retrievedPage = formInteraction.executeOnPage(loginPage);
-							
-						    logger.trace("Login page (after form submit)");
-						    logger.trace(loginPage.getWebResponse().getContentAsString());
-						}
-						else if(interaction instanceof LinkInteraction) {
-							LinkInteraction linkInteraction = (LinkInteraction) interaction;
-							retrievedPage = linkInteraction.executeOnPage(loginPage);
-							
-							logger.trace("Login page (after link click)");
-						    logger.trace(retrievedPage.getWebResponse().getContentAsString());
-						}
-						else {
-							retrievedPage = interaction.executeOnPage(loginPage);
-							
-							logger.trace("Login page (after element click)");
-						    logger.trace(retrievedPage.getWebResponse().getContentAsString());
-						}
-					}
-					else{
-						logger.error("The login page is not an HTML page, so it's not possible to interact with it");
-						logger.trace("Retrieved page:");
-						logger.trace(retrievedPage.getWebResponse().getContentAsString());
-						break;
-					}
-				}
-				return retrievedPage;
-			} 
-			else {
-				// login from the IdP's page
-				return browser.getPage(testsuite.getMockIdPURL());
-			}
-			// return the retrieved page
-		} catch (FailingHttpStatusCodeException e) {
-			logger.error("The login page did not return a valid HTTP status code");
-		} catch (MalformedURLException e) {
-			logger.error("THe login page's URL is not valid");
-		} catch (IOException e) {
-			logger.error("The login page could not be accessed due to an I/O error");
-		} catch (ElementNotFoundException e){
-			logger.error("The interaction link lookup could not find the specified element");
-		}
-		return null;
 	}
 
 	/**
@@ -615,5 +450,178 @@ public class SPTestRunner {
 	 */
 	public static SPConfiguration getSPConfig() {
 		return spConfig;
+	}
+	
+	private static boolean checkLoginHTTPStatusCode(HtmlPage page){
+		// check the HTTP Status code of the page to see if the login was successful
+		if (spConfig.getLoginStatuscode() == 0) {
+			// do not match against status code
+			return true;
+		} 
+		else if (page.getWebResponse().getStatusCode() == spConfig.getLoginStatuscode()) {
+			return true;
+		}
+		else{
+			logger.debug("The page's HTTP status code did not match the expected HTTP status code");
+			return false;
+		}
+	}
+
+	private static boolean checkLoginURL(HtmlPage responsePage) {
+		// check the URL of the page to see if the login was successful
+		if (spConfig.getLoginURL() == null) {
+			// do not match against URL
+			return true;
+		} else {
+			URL responseURL = responsePage.getUrl();
+			URL matchURL;
+			try {
+				matchURL = new URL(spConfig.getLoginURL());
+			
+				// check if the current location matches what we expect when we are
+				// correctly logged in
+				if (responseURL.equals(matchURL)) {
+					return true;
+				} else {
+					logger.debug("Could not match the URL " + matchURL.toString()
+							+ " against the returned page's URL "
+							+ responseURL.toString());
+					return false;
+				}
+			} catch (MalformedURLException e) {
+				logger.debug("The expected URL " + spConfig.getLoginURL() + " is malformed");
+				return false;
+			}
+		}
+	}
+
+	private static boolean checkLoginContent(HtmlPage responsePage) {
+		// check if the page matches what we expect to see when we log in
+		String page = responsePage.getWebResponse().getContentAsString();
+		if (spConfig.getLoginContent() == null) {
+			// do no match against page content
+			return true;
+		} else {
+			String contentRegex = spConfig.getLoginContent();
+			// compile the regex so it allows the dot character to also match new-line characters,
+			// which is useful since this is a multi-line string
+			Pattern regexP = Pattern.compile(contentRegex, Pattern.DOTALL);
+			Matcher regexM = regexP.matcher(page);
+			if (regexM.find()) {
+				return true;
+			} else {
+				logger.debug("Could not match the following regex against the returned page:\n"+ contentRegex);
+				return false;
+			}
+		}
+	}
+
+	private static boolean checkLoginCookies(HtmlPage responsePage) {
+		// check the cookies
+		if (spConfig.getLoginCookies().size() <= 0) {
+			// do not check cookies
+			return true;
+		} else {
+			ArrayList<StringPair> checkCookies = spConfig.getLoginCookies();
+			Set<Cookie> sessionCookies;
+			try {
+				sessionCookies = browser.getCookies(new URL(spConfig.getMDACSLocation(SAMLmisc.BINDING_HTTP_POST)));
+
+				// only check for cookies if we actually have some to match against
+				if (checkCookies.size() > 0) {
+					boolean found = false;
+					// check if each user-supplied cookie name and value is
+					// available
+					for (StringPair checkCookie : checkCookies) {
+						String name = checkCookie.getName();
+						String value = checkCookie.getValue();
+						// iterate through the session cookies to see if it contains
+						// the the checked cookie
+						for (Cookie sessionCookie : sessionCookies) {
+							String cookieName = sessionCookie.getName();
+							String cookieValue = sessionCookie.getValue();
+							// compare the cookie names
+							if (cookieName.equalsIgnoreCase(name)) {
+								// if no value given, you don't need to compare it
+								if (value == null || value.isEmpty()) {
+									found = true;
+									break;
+								} else {
+									if (cookieValue.equalsIgnoreCase(value)) {
+										found = true;
+										break;
+									}
+								}
+							}
+						}
+						// this cookie could not be found, so we could not find a match
+						if (!found) {
+							logger.debug("Could not match the following cookie against the returned page:\n"+ checkCookie.getName()+ ", "+ checkCookie.getValue());
+							return false;
+						}
+					}
+					// you got through all cookies so all cookies matched
+					return true;
+				}
+				else{
+					// we could not find any cookies in the page, so this failed our check
+					return false;
+				}
+			} catch (MalformedURLException e) {
+				logger.debug("The ACS URL " + spConfig.getLoginURL() + " from the target's metadata is malformed");
+				return false;
+			}
+		}
+	}
+
+	/**
+	 * Retrieve the ACS URL provided by the SAML Request
+	 * 
+	 * @return the ACS URL provided by the SAML Request
+	 */
+	private static String getRequestACSURL() {
+		Document authnRequest = SAMLUtil.fromXML(samlRequest);
+		// retrieve the attributes for the first AuthnRequest (which should be the only one) element
+		Node acsURL = authnRequest.getElementsByTagNameNS(SAMLP.NAMESPACE, SAMLP.AUTHNREQUEST).item(0).getAttributes().getNamedItem(SAMLP.ASSERTIONCONSUMERSERVICEURL);
+		if (acsURL == null){
+			return null;
+		}
+		else{
+			return acsURL.getNodeValue();
+		}
+	}
+
+	/**
+	 * Retrieve the ACS URL provided by the SAML Request
+	 * 
+	 * @return the ACS URL provided by the SAML Request
+	 */
+	private static String getRequestACSBinding() {
+		Document authnRequest = SAMLUtil.fromXML(samlRequest);
+		// retrieve the attributes for the first AuthnRequest (which should be the only one) element
+		Node acsURL = authnRequest.getElementsByTagNameNS(SAMLP.NAMESPACE, SAMLP.AUTHNREQUEST).item(0).getAttributes().getNamedItem(SAMLP.PROTOCOLBINDING);
+		if (acsURL == null){
+			return null;
+		}
+		else{
+			return acsURL.getNodeValue();
+		}
+	}
+
+	/**
+	 * Retrieve the ACS index provided by the SAML Request
+	 * 
+	 * @return the ACS index provided by the SAML Request
+	 */
+	private static int getRequestACSIndex() {
+		Document authnRequest = SAMLUtil.fromXML(samlRequest);
+		// retrieve the attributes for the first AuthnRequest (which should be the only one) element
+		Node acsURL = authnRequest.getElementsByTagNameNS(SAMLP.NAMESPACE, SAMLP.AUTHNREQUEST).item(0).getAttributes().getNamedItem(SAMLP.ASSERTIONCONSUMERSERVICEINDEX);
+		if (acsURL == null){
+			return -1;
+		}
+		else{
+			return Integer.parseInt(acsURL.getNodeValue());
+		}
 	}
 }
