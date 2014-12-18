@@ -81,14 +81,14 @@ You need to provide the following information (make sure the resulting JSON file
 
 You can create your own test suite in the `saml2webssotest.sp.testsuites` package by extending the provided TestSuite class. You can use the SAML2Int test case as an example.
 
-Each test suite must define the characteristics of its mock IdP. This mock IdP is then used to test the target SP. In order to define your mock IdP, you should implement the abstract methods from the TestSuite class. You need to define the Entity ID, URL and IdP metadata XML for your mock IdP. Aside from these abstract methods, the TestSuite class also contains some utility methods.  
+Each test suite can use the mock IdP provided in SPTestSuite, but it is also possible to overwrite the relevant methods to create your own mock IdP with its own characteristics. This mock IdP is used to test the target SP. In order to define your mock IdP, you should override the methods from the SPTestSuite class. You need to define the Entity ID, URL and IdP metadata XML for your mock IdP. The TestSuite class also contains some utility methods that might be useful when writing your test cases.   
 
 You can then create the test cases. Each test case must be created as an inner class that extends one of the TestCase interfaces that define as specific type of test case:
 
 - `ConfigTestCase`: this type of test case can be used to test aspects of the user's configuration. You can do this by implementing the `checkConfig(SPConfiguration)` method, which supplies the user's configuration so you can check all aspects of it.
 - `MetadataTestCase`: this type of test case can be used to test the metadata of the target SP. You can do this by implementing the `checkMetadata(Document)` method, which supplies the SP metadata that was found so you can check all aspects of it.
 - `RequestTestCase`: this type of test case can be used to test the SAML Authentication Request XML that was sent by the target SP. You can do this by implementing the `checkRequest(Document)` method, which supplies the Authentication Request, as received by the mock IdP, so you can check all aspects of it.
-- `LoginTestCase`: this type of test case can be used to test if you can successfully login to the target SP with different types of SAML Responses by the mock IdP. You can do this by creating a class (or multiple classes, preferably as inner classes) that extend(s) the LoginAttempt interface in order to describe a login attempt. You must then implement the `getLoginAttempts()` method which should return a list of these LoginAttempt objects (you can attempt to login multiple times, for the cases where only one of many attempts need to succeed). Then you should implement the `checkLoginResults(List<Boolean>)` method which provides the results from the list of login attempts you defined so you can evaluate whether these results are as expected. Note that in most cases, you should define a list of only 1 LoginAttempt and check its results. 
+- `LoginTestCase`: this type of test case can be used to test if you can successfully log in to the target SP with different types of SAML Responses returned by the mock IdP. You can do this by implementing the `checkLoginResults()` method where you can initiate a login attempt, specify the Response that the mock IdP should return, then complete the login attempt and check its result. More detailed information can be found in the source documentation or you can look in the SAML2Int test suite 
 
 Each TestCase should ultimately return a TestStatus, which is an enum of the following values: UNKNOWN, INFORMATION, OK, WARNING, ERROR, CRITICAL.
 They should be used as follows:
@@ -98,4 +98,6 @@ They should be used as follows:
 - `WARNING`: This status level is used when a test failed, but the failure does not mean non-compliance with the specification. This occurs when testing the recommendations of a specification instead of its requirements.
 - `ERROR`: This status level is used when a test failed and its failure indicates non-compliance with the specification.
 
-The values `UNKNOWN` and `CRITICAL` should not be used in the test cases. UNKNOWN is a fallback status, which should never be used, and CRITICAL is used to show that the test itself failed, whenever possible (exceptions can and most likely will still be thrown) 
+The values `UNKNOWN` and `CRITICAL` should not be used in the test cases. UNKNOWN is a fallback status, which should never be used, and CRITICAL is used to show that the test itself failed, whenever possible (exceptions can and most likely will still be thrown)
+
+You can also set the result message that should be returned by the test case. You can set this right before you return a TestStatus, so the message can closely match the result and, optionally, provide more detailed information about the test result. 

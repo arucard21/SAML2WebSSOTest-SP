@@ -12,20 +12,10 @@ import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 
 import org.opensaml.Configuration;
-import org.opensaml.DefaultBootstrap;
 import org.opensaml.saml2.core.Assertion;
 import org.opensaml.saml2.core.NameID;
 import org.opensaml.saml2.core.Response;
 import org.opensaml.saml2.core.SubjectConfirmation;
-import org.opensaml.saml2.metadata.EntityDescriptor;
-import org.opensaml.saml2.metadata.IDPSSODescriptor;
-import org.opensaml.saml2.metadata.KeyDescriptor;
-import org.opensaml.saml2.metadata.SingleSignOnService;
-import org.opensaml.xml.ConfigurationException;
-import org.opensaml.xml.XMLObjectBuilderFactory;
-import org.opensaml.xml.security.credential.UsageType;
-import org.opensaml.xml.security.keyinfo.KeyInfoGenerator;
-import org.opensaml.xml.security.x509.X509KeyInfoGeneratorFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
@@ -42,7 +32,6 @@ import saml2webssotest.common.standardNames.MD;
 import saml2webssotest.common.standardNames.SAML;
 import saml2webssotest.common.standardNames.SAMLP;
 import saml2webssotest.common.standardNames.SAMLmisc;
-import saml2webssotest.sp.LoginAttempt;
 import saml2webssotest.sp.SPConfiguration;
 import saml2webssotest.sp.SPTestRunner;
 
@@ -52,60 +41,6 @@ public class SAML2Int extends SPTestSuite {
 	 * Logger for this class
 	 */
 	private final Logger logger = LoggerFactory.getLogger(SAML2Int.class);
-
-	@Override
-	public String getmockIdPEntityID() {
-		return "http://localhost:8080/sso";
-	}
-
-	public URL getMockServerURL(){
-		try {
-			return new URL("http", "localhost", 8080, "/sso");
-		} catch (MalformedURLException e) {
-			logger.error("The URL of the mock IdP was malformed", e);
-			return null;
-		}
-	}
-
-	@Override
-	public String getMockedMetadata() {
-		try {
-			DefaultBootstrap.bootstrap();
-		} catch (ConfigurationException e) {
-			logger.error("Could not bootstrap OpenSAML", e);
-		}
-		XMLObjectBuilderFactory xmlbuilderfac = Configuration.getBuilderFactory();		
-		EntityDescriptor ed = (EntityDescriptor) xmlbuilderfac.getBuilder(EntityDescriptor.DEFAULT_ELEMENT_NAME).buildObject(EntityDescriptor.DEFAULT_ELEMENT_NAME);
-		IDPSSODescriptor idpssod = (IDPSSODescriptor) xmlbuilderfac.getBuilder(IDPSSODescriptor.DEFAULT_ELEMENT_NAME).buildObject(IDPSSODescriptor.DEFAULT_ELEMENT_NAME);
-		SingleSignOnService ssos = (SingleSignOnService) xmlbuilderfac.getBuilder(SingleSignOnService.DEFAULT_ELEMENT_NAME).buildObject(SingleSignOnService.DEFAULT_ELEMENT_NAME);
-		KeyDescriptor keydescriptor = (KeyDescriptor) xmlbuilderfac.getBuilder(KeyDescriptor.DEFAULT_ELEMENT_NAME).buildObject(KeyDescriptor.DEFAULT_ELEMENT_NAME);
-		
-		ssos.setBinding(SAMLmisc.BINDING_HTTP_REDIRECT);
-		if (getMockServerURL() == null)
-			return null;
-
-		ssos.setLocation(getMockServerURL().toString());
-
-		X509KeyInfoGeneratorFactory keyInfoGeneratorFactory = new X509KeyInfoGeneratorFactory();
-		keyInfoGeneratorFactory.setEmitEntityCertificate(true);
-		KeyInfoGenerator keyInfoGenerator = keyInfoGeneratorFactory.newInstance();
-		try {
-			keydescriptor.setKeyInfo(keyInfoGenerator.generate(getX509Credentials(null)));
-		} catch (org.opensaml.xml.security.SecurityException e) {
-			e.printStackTrace();
-		}
-		keydescriptor.setUse(UsageType.SIGNING);
-		 
-		idpssod.addSupportedProtocol(SAMLmisc.SAML20_PROTOCOL);
-		idpssod.getSingleSignOnServices().add(ssos);
-		idpssod.getKeyDescriptors().add(keydescriptor);
-		
-		ed.setEntityID(getmockIdPEntityID());
-		ed.getRoleDescriptors().add(idpssod);
-		
-		// return the metadata as a string
-		return SAMLUtil.toXML(ed);
-	}
 
 	/**
 	 *  Tests the following part of the SAML2Int Profile:
@@ -394,96 +329,92 @@ public class SAML2Int extends SPTestSuite {
 		}
 
 		@Override
-		public List<LoginAttempt> getLoginAttempts() {
-			ArrayList<LoginAttempt> attempts = new ArrayList<LoginAttempt>();
-		
-			// create the classes that will contain the login attempts and SAML Responses
-			class LoginAttemptTransient implements LoginAttempt{
-
-				@Override
-				public boolean isSPInitiated() {
-					return true;
-				}
-				
-				@Override
-				public String getResponse(String request) {
-					// retrieve the request ID from the request
-					String requestID = SAMLUtil.getSamlMessageID(request);
-					
-					// create the minimally required Response
-					Response responseTransient = createMinimalWebSSOResponse();
-					// add attributes and sign the assertions in the response
-					List<Assertion> assertions = responseTransient.getAssertions();
-					for (Assertion assertion : assertions){
-						// create nameid with transient format
-						NameID nameid = (NameID) Configuration.getBuilderFactory().getBuilder(NameID.DEFAULT_ELEMENT_NAME).buildObject(NameID.DEFAULT_ELEMENT_NAME);
-						nameid.setValue("_"+UUID.randomUUID().toString());
-						nameid.setFormat(SAMLmisc.NAMEID_FORMAT_TRANSIENT);
-						assertion.getSubject().setNameID(nameid);
-
-						// set the InReplyTo attribute on the subjectconfirmationdata of all subjectconfirmations
-						List<SubjectConfirmation> subconfs = assertion.getSubject().getSubjectConfirmations();
-						for (SubjectConfirmation subconf : subconfs){
-							subconf.getSubjectConfirmationData().setInResponseTo(requestID);
-						}
-						// add the attributes
-						addTargetSPAttributes(assertion);
-						SAMLUtil.sign(assertion, getX509Credentials(null));
-					}
-					// add the InReplyTo attribute to the Response as well
-					responseTransient.setInResponseTo(requestID);
-					return SAMLUtil.toXML(responseTransient);
-				}
-			}
+		public TestStatus checkLogin() {
 			
-			class LoginAttemptPersistent implements LoginAttempt{
+			/**
+			 * Initiate a login attempt (SP-initiated)
+			 */
+			SPTestRunner.initiateLoginAttempt(true);
+			
+			/**
+			 * Create the Response we wish the mock IdP to return 
+			 */
+			
+			// retrieve the request ID from the SAML Request
+			String requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getSamlRequest());
+			
+			// create the minimally required Response
+			Response response = createMinimalWebSSOResponse();			
+			// add attributes and sign the assertions in the response
+			List<Assertion> assertionsTransient = response.getAssertions();
+			
+			for (Assertion assertion : assertionsTransient){
+				// create nameid with transient format
+				NameID nameid = (NameID) Configuration.getBuilderFactory().getBuilder(NameID.DEFAULT_ELEMENT_NAME).buildObject(NameID.DEFAULT_ELEMENT_NAME);
+				nameid.setValue("_"+UUID.randomUUID().toString());
+				nameid.setFormat(SAMLmisc.NAMEID_FORMAT_TRANSIENT);
+				assertion.getSubject().setNameID(nameid);
 
-				@Override
-				public boolean isSPInitiated() {
-					return true;
+				// set the InReplyTo attribute on the subjectconfirmationdata of all subjectconfirmations
+				List<SubjectConfirmation> subconfs = assertion.getSubject().getSubjectConfirmations();
+				for (SubjectConfirmation subconf : subconfs){
+					subconf.getSubjectConfirmationData().setInResponseTo(requestID);
 				}
-				
-				@Override
-				public String getResponse(String request) {
-					// retrieve the request ID from the request
-					String requestID = SAMLUtil.getSamlMessageID(request);
-					
-					// create the minimally required Response
-					Response responsePersistent = createMinimalWebSSOResponse();
-					// add attributes and sign the assertions in the response
-					List<Assertion> assertions = responsePersistent.getAssertions();
-					for (Assertion assertion : assertions){
-						// create nameid with persistent format
-						NameID nameid = (NameID) Configuration.getBuilderFactory().getBuilder(NameID.DEFAULT_ELEMENT_NAME).buildObject(NameID.DEFAULT_ELEMENT_NAME);
-						nameid.setValue("_"+UUID.randomUUID().toString());
-						nameid.setFormat(SAMLmisc.NAMEID_FORMAT_PERSISTENT);
-						assertion.getSubject().setNameID(nameid);
-
-						// set the InReplyTo attribute on the subjectconfirmationdata of all subjectconfirmations
-						List<SubjectConfirmation> subconfs = assertion.getSubject().getSubjectConfirmations();
-						for (SubjectConfirmation subconf : subconfs){
-							subconf.getSubjectConfirmationData().setInResponseTo(requestID);
-						}
-						// add the attributes
-						addTargetSPAttributes(assertion);
-						SAMLUtil.sign(assertion, getX509Credentials(null));
-					}
-					// add the InReplyTo attribute to the Response as well
-					responsePersistent.setInResponseTo(requestID);
-
-					return SAMLUtil.toXML(responsePersistent);
-				}
+				// add the attributes
+				addTargetSPAttributes(assertion);
+				SAMLUtil.sign(assertion, getX509Credentials(null));
 			}
-			attempts.add(new LoginAttemptTransient());
-			attempts.add(new LoginAttemptPersistent());
-			return attempts;
-		}
+			// add the InReplyTo attribute to the Response as well
+			response.setInResponseTo(requestID);
+			// convert the Response to a String
+			String responseTransient = SAMLUtil.toXML(response);
+			
+			/**
+			 * Complete the login attempt
+			 */
+			Boolean loginTransient = SPTestRunner.completeLoginAttempt(responseTransient);
+			
+			/**
+			 * Reset the browser so we can try another login attempt
+			 */
+			SPTestRunner.resetBrowser();
 
-		@Override
-		public TestStatus checkLoginResults(List<Boolean> loginResults) {
-			// the results should come back in the same order as they were provided, so we can check which login attempts succeeded
-			if (loginResults.get(0).booleanValue()){	
-				if (loginResults.get(1).booleanValue()){
+			/**
+			 * Initiate the login attempt again
+			 */
+			SPTestRunner.initiateLoginAttempt(true);
+			// retrieve the new request ID
+			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getSamlRequest());
+			
+			/**
+			 * Create the Response we wish the mock IdP to return this time
+			 */
+						
+			// Change the NameID Format of the previously create Response from transient to persistent
+			List<Assertion> assertionsPersistent = response.getAssertions();
+			for (Assertion assertion : assertionsPersistent){
+				// change nameid to persistent format
+				assertion.getSubject().getNameID().setFormat(SAMLmisc.NAMEID_FORMAT_PERSISTENT);
+			}
+			// add the InReplyTo attribute to the Response as well
+			response.setInResponseTo(requestID);
+			// convert the Response to a string
+			String responsePersistent = SAMLUtil.toXML(response);
+			
+			/**
+			 * Complete this second login attempt
+			 */
+			Boolean loginPersistent = SPTestRunner.completeLoginAttempt(responsePersistent);
+			
+			/**
+			 * Check the results of the login attempts
+			 */
+			if (loginTransient == null || loginPersistent == null){
+				logger.debug("The login attempt could not be completed");
+				return TestStatus.CRITICAL;
+			}
+			else if (loginTransient){	
+				if (loginPersistent){
 					resultMessage = "The Service Provider could log in with both transient and persistent name identifier format";
 					return TestStatus.OK;
 				}
@@ -493,15 +424,15 @@ public class SAML2Int extends SPTestSuite {
 				}
 			}
 			else{
-				if (loginResults.get(1).booleanValue()){
+				if (loginPersistent){
 					resultMessage = "The Service Provider could log in with persistent name identifier format";
 					return TestStatus.OK;
 				}
 				else{
-					resultMessage = "The Service Provider could not log in with either transient or persistent name identifier format";
+					resultMessage = "The Service Provider could log in with neither transient nor persistent name identifier format";
 					return TestStatus.ERROR;
 				}
-			}
+			}	
 		}
 	}
 	
@@ -526,49 +457,44 @@ public class SAML2Int extends SPTestSuite {
 		}
 
 		@Override
-		public List<LoginAttempt> getLoginAttempts() {
-			ArrayList<LoginAttempt> attempts = new ArrayList<LoginAttempt>();
-		
-			// create the classes that will contain the login attempts and SAML Responses
-			class LoginAttemptIdPInitiated implements LoginAttempt{
-
-				@Override
-				public boolean isSPInitiated() {
-					return false;
-				}
-				
-				@Override
-				public String getResponse(String request) {
-					// create the minimally required Response
-					Response response = createMinimalWebSSOResponse();
-					// add attributes and sign the assertions in the response
-					List<Assertion> assertions = response.getAssertions();
-					for (Assertion assertion : assertions){
-						// create nameid with transient format
-						NameID nameid = (NameID) Configuration.getBuilderFactory().getBuilder(NameID.DEFAULT_ELEMENT_NAME).buildObject(NameID.DEFAULT_ELEMENT_NAME);
-						nameid.setValue("_"+UUID.randomUUID().toString());
-						nameid.setFormat(SAMLmisc.NAMEID_FORMAT_TRANSIENT);
-						assertion.getSubject().setNameID(nameid);
-
-						// add the attributes
-						addTargetSPAttributes(assertion);
-						SAMLUtil.sign(assertion, getX509Credentials(null));
-					}
-					// add the InReplyTo attribute to the Response as well
-
-					String responseXML = SAMLUtil.toXML(response);
-					return responseXML;
-				}
-			}
+		public TestStatus checkLogin() {
+			/**
+			 * Initiate the login attempt
+			 */
+			SPTestRunner.initiateLoginAttempt(false);
 			
-			attempts.add(new LoginAttemptIdPInitiated());
-			return attempts;
-		}
+			/**
+			 * Create the Response we wish the mock IdP to return
+			 */
+			Response response = createMinimalWebSSOResponse();
+			// add attributes and sign the assertions in the response
+			List<Assertion> assertions = response.getAssertions();
+			for (Assertion assertion : assertions){
+				// create nameid with transient format
+				NameID nameid = (NameID) Configuration.getBuilderFactory().getBuilder(NameID.DEFAULT_ELEMENT_NAME).buildObject(NameID.DEFAULT_ELEMENT_NAME);
+				nameid.setValue("_"+UUID.randomUUID().toString());
+				nameid.setFormat(SAMLmisc.NAMEID_FORMAT_TRANSIENT);
+				assertion.getSubject().setNameID(nameid);
 
-		@Override
-		public TestStatus checkLoginResults(List<Boolean> loginResults) {
-			// the results should come back in the same order as they were provided, so we can check which login attempts succeeded
-			if (loginResults.get(0).booleanValue())	{
+				// add the attributes
+				addTargetSPAttributes(assertion);
+				SAMLUtil.sign(assertion, getX509Credentials(null));
+			}
+			String responseIdPInitiated = SAMLUtil.toXML(response);
+			
+			/**
+			 * Complete the login attempt
+			 */
+			Boolean loginIdPInitiated = SPTestRunner.completeLoginAttempt(responseIdPInitiated);
+			
+			/**
+			 * Check the result of the login attempt
+			 */
+			if(loginIdPInitiated == null) {
+				logger.debug("The login attempt could not be completed");
+				return TestStatus.CRITICAL;
+			}
+			else if (loginIdPInitiated) {
 				resultMessage = "The Service Provider allowed IdP-initiated login";
 				return TestStatus.OK;
 			}

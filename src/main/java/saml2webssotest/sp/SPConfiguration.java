@@ -3,14 +3,20 @@ package saml2webssotest.sp;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.opensaml.Configuration;
+import org.opensaml.DefaultBootstrap;
+import org.opensaml.saml2.metadata.AssertionConsumerService;
+import org.opensaml.xml.ConfigurationException;
 import org.w3c.dom.Document;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
 import saml2webssotest.common.Interaction;
+import saml2webssotest.common.SAMLUtil;
 import saml2webssotest.common.StringPair;
 import saml2webssotest.common.SAMLAttribute;
 import saml2webssotest.common.standardNames.MD;
+import saml2webssotest.common.standardNames.SAMLP;
 
 public class SPConfiguration {
 	/**
@@ -180,119 +186,97 @@ public class SPConfiguration {
 	}
 	
 	/**
-	 * Retrieve the location of the AssertionConsumerService for a specific
-	 * binding for the SP that is being tested from the metadata.
+	 * Retrieve the applicable AssertionConsumerService node from the SP metadata, taking into account the given AuthnRequest.
 	 * 
-	 * @param binding specifies for which binding the location should be retrieved
-	 * @return the location for the requested binding or null if no matching ACS could be found
-	 */
-	public String getMDACSLocation(String binding) {
-		ArrayList<Node> acsNodes = (ArrayList<Node>) getMDNodes(MD.ASSERTIONCONSUMERSERVICE);
-		// look for ACS with specified binding
-		for (Node acs : acsNodes) {
-			if (acs.getAttributes().getNamedItem(MD.BINDING)
-					.getNodeValue().equalsIgnoreCase(binding))
-				// return the location for the requested binding
-				return acs.getAttributes().getNamedItem(MD.LOCATION)
-						.getNodeValue();
-		}
-		// the requested binding could not be found
-		return null;
-	}
-	
-	/**
-	 * Retrieve the location of the AssertionConsumerService with a specific index
-	 * for the SP that is being tested from the metadata.
+	 * It checks if the request contains an ACS location or index and returns the corresponding ACS Node (a newly created one 
+	 * based on the information in the request or retrieved from the SP metadata, respectively), otherwise it just returns the 
+	 * default ACS node found in the SP metadata. 
 	 * 
-	 * @param index specifies the index of the ACS for which the location should be retrieved
-	 * @return the location of the ACS with the requested index or null if no matching ACS could be found
+	 * @param authnRequest is the AuthnRequest that was received (or null if IdP-initiated)
+	 * @return the applicable ACS node or null if no matching ACS could be found
 	 */
-	public String getMDACSLocation(int index) {
-		ArrayList<Node> acsNodes = (ArrayList<Node>) getMDNodes(MD.ASSERTIONCONSUMERSERVICE);
-		// look for ACS with specified index
-		for (Node acs : acsNodes) {
-			int nodeIndex = Integer.parseInt(acs.getAttributes().getNamedItem(MD.INDEX).getNodeValue());
-			if (nodeIndex == index)
-				// return the location for the ACS with the requested index
-				return acs.getAttributes().getNamedItem(MD.LOCATION).getNodeValue();
+	public Node getApplicableACS(Document authnRequest) {
+		Node authnRequestNode = null;
+		Node acsURL = null;
+		Node acsIndex = null;
+		// only retrieve the information from the authnrequest if it is actually provided
+		if (authnRequest != null){
+			// retrieve the ACS URL that was provided in the AuthnRequest
+			authnRequestNode = authnRequest.getElementsByTagNameNS(SAMLP.NAMESPACE, SAMLP.AUTHNREQUEST).item(0);
+			acsURL = authnRequestNode .getAttributes().getNamedItem(SAMLP.ASSERTIONCONSUMERSERVICEURL);
+			// retrieve the ACS index that was provided in the AuthnRequest
+			acsIndex = authnRequestNode.getAttributes().getNamedItem(SAMLP.ASSERTIONCONSUMERSERVICEINDEX);
 		}
-		// the requested index could not be found
-		return null;
-	}
-	
-	/**
-	 * Retrieve the binding of the AssertionConsumerService with a specific index
-	 * for the SP that is being tested from the metadata.
-	 * 
-	 * @param index specifies the index of the ACS for which the binding should be retrieved
-	 * @return the binding of the ACS with the requested index or null if no matching ACS could be found
-	 */
-	public String getMDACSBinding(int index) {
-		ArrayList<Node> acsNodes = (ArrayList<Node>) getMDNodes(MD.ASSERTIONCONSUMERSERVICE);
-		// look for ACS with specified index
-		for (Node acs : acsNodes) {
-			int nodeIndex = Integer.parseInt(acs.getAttributes().getNamedItem(MD.INDEX).getNodeValue());
-			if (nodeIndex == index)
-				// return the location for the ACS with the requested index
-				return acs.getAttributes().getNamedItem(MD.BINDING).getNodeValue();
+		
+		// find the applicable ACS
+		if (acsURL == null){
+			ArrayList<Node> acsNodes = (ArrayList<Node>) getMDNodes(MD.ASSERTIONCONSUMERSERVICE);
+			
+			// no ACS location found in request, check the ACS index
+			if ( acsIndex  == null ){
+				// no ACS location or index found in request, so just use default
+				
+				Node firstACS = null;
+				// check if one of the nodes is set as default and return its location
+				for (Node acs : acsNodes) {
+					if (acs.getAttributes().getNamedItem(MD.ISDEFAULT) != null) {
+						if(acs.getAttributes().getNamedItem(MD.ISDEFAULT).getNodeValue().equalsIgnoreCase("true")){
+							return acs;
+						}
+					}
+					else{
+						if (firstACS == null){
+							// save the first ACS found without isDefault attribute so it can be returned 
+							// later if no ACS with isDefault=true can be found
+							firstACS = acs;
+						}
+					}
+				}
+				// no ACS found with isDefault set to true, so return the first ACS without isDefault attribute
+				return firstACS;
+			}
+			else{
+				// ACS index found, so set location and binding accordingly
+				int acsIndexInt = Integer.parseInt(acsIndex.getNodeValue());
+				// look for ACS with specified index
+				for (Node acs : acsNodes) {
+					int nodeIndex = Integer.parseInt(acs.getAttributes().getNamedItem(MD.INDEX).getNodeValue());
+					if (nodeIndex == acsIndexInt)
+						// return the location for the ACS with the requested index
+						return acs;
+				}
+				// the requested index could not be found
+				return null;
+			}
 		}
-		// the requested index could not be found
-		return null;
-	}
+		else{
+			// check if the index is also available
+			if(acsIndex != null){
+				// location and index should be mutually-exclusive so the request is invalid
+				return null;
+			}
+			
+			// found ACS location in request, must also have a binding then
+			Node acsBinding = authnRequestNode.getAttributes().getNamedItem(SAMLP.PROTOCOLBINDING);
+			
+			// create a new ACS node with the given location and binding
+			try {
+				DefaultBootstrap.bootstrap();
+			} catch (ConfigurationException e) {
+				// could not create the ACS node
+				return null;
+			}
 
-	/**
-	 * Retrieve the location of the default AssertionConsumerService 
-	 * (as defined by [SAMLMeta] 2.2.3). 
-	 * 
-	 * @return the location of the default AssertionConsumerService
-	 */
-	public String getDefaultMDACSLocation(){
-		ArrayList<Node> acsNodes = (ArrayList<Node>) getMDNodes(MD.ASSERTIONCONSUMERSERVICE);
-		
-		String firstACSLocation = null;
-		// check if one of the nodes is set as default and return its location
-		for (Node acs : acsNodes) {
-			if (acs.getAttributes().getNamedItem(MD.ISDEFAULT) != null) {
-				if(acs.getAttributes().getNamedItem(MD.ISDEFAULT).getNodeValue().equalsIgnoreCase("true")){
-					return acs.getAttributes().getNamedItem(MD.LOCATION).getNodeValue();
-				}
-			}
-			else{
-				if (firstACSLocation == null){
-					// save the first ACS found without isDefault attribute so it can be returned later
-					firstACSLocation = acs.getAttributes().getNamedItem(MD.LOCATION).getNodeValue();
-				}
-			}
+			AssertionConsumerService acsObj =  (AssertionConsumerService) Configuration.getBuilderFactory()
+					.getBuilder(AssertionConsumerService.DEFAULT_ELEMENT_NAME)
+					.buildObject(AssertionConsumerService.DEFAULT_ELEMENT_NAME);
+
+			acsObj.setLocation(acsURL.getNodeValue());
+			acsObj.setBinding(acsBinding.getNodeValue());
+			// use max unsignedShort value so it is less likely to use an index that is already in use (but still uses a valid value)
+			acsObj.setIndex(new Integer(65535));
+			// return the ACS as a Document (converting the SAMLObject to a String and then from String to a Document)
+			return SAMLUtil.fromXML(SAMLUtil.toXML(acsObj)).getElementsByTagNameNS(MD.NAMESPACE, MD.ASSERTIONCONSUMERSERVICE).item(0);
 		}
-		// no ACS found with isDefault set to true, so return the first ACS without isDefault attribute
-		return firstACSLocation;
-	}
-	
-	/**
-	 * Retrieve the binding of the default AssertionConsumerService 
-	 * (as defined by [SAMLMeta] 2.2.3). 
-	 * 
-	 * @return the binding of the default AssertionConsumerService
-	 */
-	public String getDefaultMDACSBinding(){
-		ArrayList<Node> acsNodes = (ArrayList<Node>) getMDNodes(MD.ASSERTIONCONSUMERSERVICE);
-		
-		String firstACSLocation = null;
-		// check if one of the nodes is set as default and return its location
-		for (Node acs : acsNodes) {
-			if (acs.getAttributes().getNamedItem(MD.ISDEFAULT) != null) {
-				if(acs.getAttributes().getNamedItem(MD.ISDEFAULT).getNodeValue().equalsIgnoreCase("true")){
-					return acs.getAttributes().getNamedItem(MD.BINDING).getNodeValue();
-				}
-			}
-			else{
-				if (firstACSLocation == null){
-					// save the first ACS found without isDefault attribute so it can be returned later
-					firstACSLocation = acs.getAttributes().getNamedItem(MD.BINDING).getNodeValue();
-				}
-			}
-		}
-		// no ACS found with isDefault set to true, so return the first ACS without isDefault attribute
-		return firstACSLocation;
 	}
 }

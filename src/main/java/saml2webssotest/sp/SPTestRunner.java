@@ -18,7 +18,6 @@ import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
-import org.apache.http.client.ClientProtocolException;
 import org.apache.log4j.BasicConfigurator;
 import org.apache.log4j.PropertyConfigurator;
 import org.eclipse.jetty.server.Server;
@@ -47,7 +46,7 @@ import saml2webssotest.common.TestRunnerUtil;
 import saml2webssotest.common.TestStatus;
 import saml2webssotest.common.TestSuite.TestCase;
 import saml2webssotest.common.TestSuite.MetadataTestCase;
-import saml2webssotest.common.standardNames.SAMLP;
+import saml2webssotest.common.standardNames.MD;
 import saml2webssotest.common.standardNames.SAMLmisc;
 import saml2webssotest.sp.mockIdPHandlers.SamlWebSSOHandler;
 import saml2webssotest.sp.testsuites.SPTestSuite;
@@ -88,6 +87,18 @@ public class SPTestRunner {
 	 * Contains the SAML binding that was recognized by the mock IdP
 	 */
 	private static String samlRequestBinding;
+	/**
+	 * Contains the HTTP request made in order to send the Response to the target SP
+	 */
+	private static WebRequest sentResponse;
+	/**
+	 * Contains the ACS URL to which the mock IdP should send its Response
+	 */
+	private static URL applicableACSURL;
+	/**
+	 * Contains the binding the mock IdP should use when sending its Response to the ACS 
+	 */
+	private static String applicableACSBinding;
 	/**
 	 * Contains the mock IdP server
 	 */
@@ -273,20 +284,18 @@ public class SPTestRunner {
 			RequestTestCase reqTC = (RequestTestCase) testcase;
 			// make the SP send the AuthnRequest by starting an SP-initiated login attempt
 			try {
-				TestRunnerUtil.interactWithPage(browser.getPage(spConfig.getStartPage()), spConfig.getPreLoginInteractions());
-			
-				//retrieveLoginPage(true); 
-			
-				// the SAML Request should have been retrieved by the mock IdP and
-				// set here during the execute() method
+				initiateLoginAttempt(true);
+				//TestRunnerUtil.interactWithPage(browser.getPage(spConfig.getStartPage()), spConfig.getPreLoginInteractions());
 				if (samlRequest != null && !samlRequest.isEmpty()) {
-					logger.debug("Received the SAML request");
+					logger.debug("Testing the AuthnRequest");
 					logger.trace(samlRequest);
 					/**
 					 * Check the SAML Request according to the specifications of the
 					 * test case and return the status of the test
 					 */
-					return reqTC.checkRequest(samlRequest,samlRequestBinding);
+					TestStatus requestResult = reqTC.checkRequest(samlRequest,samlRequestBinding);
+					resetBrowser();
+					return requestResult;
 				} else {
 					logger.error("Could not retrieve the SAML Request that was sent by the target SP");
 					return TestStatus.CRITICAL;
@@ -294,131 +303,159 @@ public class SPTestRunner {
 			} catch (FailingHttpStatusCodeException e) {
 				logger.error("The start page returned a failing HTTP status code", e);
 				return TestStatus.CRITICAL;
-			} catch (MalformedURLException e) {
-				logger.error("The URL for the start page was malformed", e);
-				return TestStatus.CRITICAL;
-			} catch (IOException e) {
-				logger.error("An I/O exception occurred while trying to access the start page", e);
-				return TestStatus.CRITICAL;
 			}
 		} else if (testcase instanceof LoginTestCase) {
 			LoginTestCase loginTC = (LoginTestCase) testcase;
-			ArrayList<Boolean> testResults = new ArrayList<Boolean>();
-
-			// get all login attempts that should be tested
-			ArrayList<LoginAttempt> logins = (ArrayList<LoginAttempt>) loginTC.getLoginAttempts();
-
-			// execute all login attempts
-			for (LoginAttempt login : logins) {
-				// start login attempt with target SP
-				try {
-					URL acsURL;
-					String binding = null;
-					// determine the ACS location and binding, depending on the received SAML Request
-					if(login.isSPInitiated()){
-						// retrieve the login page, thereby sending the AuthnRequest to the mock IdP
-						TestRunnerUtil.interactWithPage(browser.getPage(spConfig.getStartPage()), spConfig.getPreLoginInteractions());
-						// check if the saml request has correctly been retrieved by the mock IdP 
-						// if not, most likely caused by trying to use artifact binding
-						if (samlRequest == null || samlRequest.isEmpty()) {
-							logger.error("Could not retrieve the SAML request");
-							return null;
-						}
-						// try to retrieve the location and binding of the ACS where this should be sent from the request
-						String acsLoc = getRequestACSURL();
-						if (acsLoc == null){
-							// no ACS location found in request, check for ACS index
-							int acsIndex = getRequestACSIndex();
-							if ( acsIndex >= 0 ){
-								// ACS index found, so set location and binding accordingly
-								acsLoc = spConfig.getMDACSLocation(acsIndex);
-								binding = spConfig.getMDACSBinding(acsIndex);
-							}
-							else{
-								// no ACS location or index found in request, so just use default
-								acsLoc = spConfig.getDefaultMDACSLocation();
-								binding = spConfig.getDefaultMDACSBinding();
-							}
-						}
-						else{
-							// found ACS location in request, must also have a binding then
-							binding = getRequestACSBinding();
-						}
-						acsURL = new URL(acsLoc);
-					}
-					else{
-						// go directly to the IdP page without an AuthnRequest (for idp-initiated authentication)
-						TestRunnerUtil.interactWithPage(browser.getPage(testsuite.getMockServerURL().toString()), new ArrayList<Interaction>());
-						// retrieve the location of the default ACS where this should be sent
-						acsURL = new URL(spConfig.getDefaultMDACSLocation());
-						binding = spConfig.getDefaultMDACSBinding();
-						
-					}
-					// create HTTP request to send the SAML response to the SP's ACS url
-					String samlResponse = login.getResponse(samlRequest);
-					WebRequest sendResponse = new WebRequest(acsURL, HttpMethod.POST);
-					ArrayList<NameValuePair> postParameters = new ArrayList<NameValuePair>();
-					NameValuePair samlresponse;
-					// set the SAML URL parameter according to the requested binding
-					if (binding.equalsIgnoreCase(SAMLmisc.BINDING_HTTP_POST)){
-						samlresponse = new NameValuePair(SAMLmisc.URLPARAM_SAMLRESPONSE_POST, SAMLUtil.encodeSamlMessageForPost(samlResponse));
-					}
-					else if (binding.equalsIgnoreCase(SAMLmisc.BINDING_HTTP_ARTIFACT)){
-						// TODO: support artifact binding
-						//samlresponse = new NameValuePair(SAMLmisc.URLPARAM_SAMLARTIFACT, SAMLUtil.encodeSamlMessageForArtifact(samlResponse));
-						logger.debug("Response needs to be sent with Artifact binding, this is not yet supported");
-						return TestStatus.CRITICAL;
-					}
-					else{
-						logger.error("An invalid binding was requested for sending the Response to the SP");
-						return TestStatus.CRITICAL;
-					}
-					postParameters.add(samlresponse);
-					sendResponse.setRequestParameters(postParameters);
-					
-					logger.debug("Sending SAML Response to the SP");
-					logger.trace(samlResponse);
-					// send the SAML response to the SP
-					HtmlPage responsePage = browser.getPage(sendResponse);
-					
-					logger.trace("The received page:\n"+responsePage.getWebResponse().getContentAsString());
-					
-					// the login succeeded when all configured matches are found
-					if (checkLoginHTTPStatusCode(responsePage) 
-							&& checkLoginURL(responsePage) 
-							&& checkLoginContent(responsePage) 
-							&& checkLoginCookies(responsePage)) {
-						testResults.add(new Boolean(true));
-					}
-					else{
-						testResults.add(new Boolean(false));
-					}
-					// close the browser windows
-					browser.getCache().clear();
-					browser.getCookieManager().clearCookies();
-					browser.closeAllWindows();
-				} catch (ClientProtocolException e) {
-					logger.error("Could not execute HTTP request for the LoginTestCase", e);
-					return null;
-				}catch (FailingHttpStatusCodeException e){
-					logger.error("Could not retrieve browser page for the LoginTestCase", e);
-					return null;
-				}catch (IOException e) {
-					logger.error("Could not execute HTTP request for the LoginTestCase", e);
-					return null;
-				}
-			}
 			/**
-			 * Check if the login attempts were valid according to the
-			 * specifications of the test case and return the status of the test
+			 * Check if login attempts are handled correctly
 			 */
-			return loginTC.checkLoginResults(testResults);
+			TestStatus loginResult = loginTC.checkLogin();
+			resetBrowser();
+			return loginResult;
 		} else {
 			logger.error("Trying to run an unknown type of test case");
 			return null;
 		}
 	}
 
+	/**
+	 * Initiate a login attempt at the target SP. 
+	 * 
+	 * This will initiate the login process by causing the target SP to send an 
+	 * AuthnRequest (if SP-initiated), storing the AuthnRequest that was received 
+	 * by the mock IdP (if SP-initiated) and figuring out which ACS URL and binding 
+	 * the mock IdP should use.
+	 * 
+	 * @param spInitiated defines whether the login attempt should be SP-initiated 
+	 */
+	public static void initiateLoginAttempt(boolean spInitiated){
+		Node applicableACS;
+		// determine the ACS location and binding, depending on the received SAML Request
+		try {
+		if(spInitiated){
+			// retrieve the login page, thereby sending the AuthnRequest to the mock IdP
+				TestRunnerUtil.interactWithPage(browser.getPage(spConfig.getStartPage()), spConfig.getPreLoginInteractions());
+			// check if the saml request has correctly been retrieved by the mock IdP 
+			// if not, most likely caused by trying to use artifact binding
+			if (samlRequest == null || samlRequest.isEmpty()) {
+				logger.error("Could not retrieve the SAML request after SP-initiated login attempt");
+			}
+			applicableACS = spConfig.getApplicableACS(SAMLUtil.fromXML(samlRequest));
+		}
+		else{
+			// go directly to the IdP page without an AuthnRequest (for idp-initiated authentication)
+			browser.getPage(testsuite.getMockServerURL().toString());		
+			applicableACS = spConfig.getApplicableACS(null);
+		}
+		
+		// try to retrieve the location and binding of the ACS where this should be sent from the request
+		applicableACSURL = new URL(applicableACS.getAttributes().getNamedItem(MD.LOCATION).getNodeValue());
+		applicableACSBinding = applicableACS.getAttributes().getNamedItem(MD.BINDING).getNodeValue();
+		
+		} catch (FailingHttpStatusCodeException e){
+			logger.error("Could not retrieve browser page for the LoginTestCase", e);
+		} catch (MalformedURLException e) {
+			logger.error("The URL for the start page was malformed", e);
+		} catch (IOException e) {
+			logger.error("An I/O exception occurred while trying to access the start page", e);
+		}
+	}
+	/**
+	 * Finish trying to log in to the target SP with the mock IdP returning the provided SAML Response.
+	 * 
+	 * Note that you should have first initiated the login attempt with initiateLogin() in order for
+	 * the mock IdP to know which ACS URL and binding should be used 
+	 * 
+	 * 
+	 * @param response is the SAML Response that should be returned by the mock IdP
+	 * @return a Boolean object with value true if the login attempt was successful, false if 
+	 * the login attempt failed and null if the login attempt could not be completed
+	 */
+	public static Boolean completeLoginAttempt(String response){
+		// start login attempt with target SP
+		try {
+			// create HTTP request to send the SAML response to the SP's ACS url
+			sentResponse = new WebRequest(applicableACSURL, HttpMethod.POST);
+			ArrayList<NameValuePair> postParameters = new ArrayList<NameValuePair>();
+			NameValuePair samlresponse;
+			// set the SAML URL parameter according to the requested binding
+			if (applicableACSBinding.equalsIgnoreCase(SAMLmisc.BINDING_HTTP_POST)){
+				samlresponse = new NameValuePair(SAMLmisc.URLPARAM_SAMLRESPONSE_POST, SAMLUtil.encodeSamlMessageForPost(response));
+			}
+			else if (applicableACSBinding.equalsIgnoreCase(SAMLmisc.BINDING_HTTP_ARTIFACT)){
+				// TODO: support artifact binding
+				logger.debug("Response needs to be sent with Artifact binding, this is not yet supported");
+				return null;
+			}
+			else{
+				logger.error("An invalid binding was requested for sending the Response to the SP");
+				return null;
+			}
+			postParameters.add(samlresponse);
+			sentResponse.setRequestParameters(postParameters);
+			
+			logger.debug("Sending SAML Response to the SP");
+			logger.trace(response);
+			// send the SAML response to the SP
+			HtmlPage responsePage = browser.getPage(sentResponse);
+			
+			logger.trace("The received page:\n"+responsePage.getWebResponse().getContentAsString());
+			
+			// the login succeeded when all configured matches are found
+			if (checkLoginHTTPStatusCode(responsePage) 
+					&& checkLoginURL(responsePage) 
+					&& checkLoginContent(responsePage) 
+					&& checkLoginCookies(responsePage)) {
+				return new Boolean(true);
+			}
+			else{
+				return new Boolean(false);
+			}
+		} catch (FailingHttpStatusCodeException e){
+			logger.error("Could not retrieve browser page for the LoginTestCase", e);
+			return null;
+		} catch (IOException e) {
+			logger.error("Could not execute HTTP request for the LoginTestCase", e);
+			return null;
+		}
+	}
+	
+	/**
+	 * Retrieves the browser that is used by the test runner. 
+	 * 
+	 * This allows performing additional actions in the browser, if required by 
+	 * any test case. 
+	 * 
+	 * @return the WebClient used as browser by the test runner.
+	 */
+	public static WebClient getBrowser(){
+		return browser;
+	}
+	
+	/**
+	 * Resets the WebClient object used as browser.
+	 * 
+	 * This will close all browser windows and clear all cookies and cache
+	 */
+	public static void resetBrowser() {
+		// close the browser windows after each test case
+		browser.getCache().clear();
+		browser.getCookieManager().clearCookies();
+		browser.closeAllWindows();
+	}
+
+	/**
+	 * Retrieves the SAML Request that was received from the SP
+	 * 
+	 * This is set from the Handler that processes the SP's login attempt
+	 * on the mock IdP so it should only be retrieved after a login 
+	 * attempt has been initiated
+	 * 
+	 * @param request is the SAML Request
+	 */
+	public static String getSamlRequest() {
+		return samlRequest;
+	}
 	/**
 	 * Set the SAML Request that was received from the SP
 	 * 
@@ -452,6 +489,15 @@ public class SPTestRunner {
 		return spConfig;
 	}
 	
+	/**
+	 * Retrieve the HTTP request used to send the Response to the target SP (might not be needed)
+	 * 
+	 * @return the WebRequest object used to send the Response
+	 *//*
+	public static WebRequest getSentResponse() {
+		return sentResponse;
+	}*/
+
 	private static boolean checkLoginHTTPStatusCode(HtmlPage page){
 		// check the HTTP Status code of the page to see if the login was successful
 		if (spConfig.getLoginStatuscode() == 0) {
@@ -523,105 +569,48 @@ public class SPTestRunner {
 			return true;
 		} else {
 			ArrayList<StringPair> checkCookies = spConfig.getLoginCookies();
-			Set<Cookie> sessionCookies;
-			try {
-				sessionCookies = browser.getCookies(new URL(spConfig.getMDACSLocation(SAMLmisc.BINDING_HTTP_POST)));
+			Set<Cookie> sessionCookies = browser.getCookies(sentResponse.getUrl());
 
-				// only check for cookies if we actually have some to match against
-				if (checkCookies.size() > 0) {
-					boolean found = false;
-					// check if each user-supplied cookie name and value is
-					// available
-					for (StringPair checkCookie : checkCookies) {
-						String name = checkCookie.getName();
-						String value = checkCookie.getValue();
-						// iterate through the session cookies to see if it contains
-						// the the checked cookie
-						for (Cookie sessionCookie : sessionCookies) {
-							String cookieName = sessionCookie.getName();
-							String cookieValue = sessionCookie.getValue();
-							// compare the cookie names
-							if (cookieName.equalsIgnoreCase(name)) {
-								// if no value given, you don't need to compare it
-								if (value == null || value.isEmpty()) {
+			// only check for cookies if we actually have some to match against
+			if (checkCookies.size() > 0) {
+				boolean found = false;
+				// check if each user-supplied cookie name and value is
+				// available
+				for (StringPair checkCookie : checkCookies) {
+					String name = checkCookie.getName();
+					String value = checkCookie.getValue();
+					// iterate through the session cookies to see if it contains
+					// the the checked cookie
+					for (Cookie sessionCookie : sessionCookies) {
+						String cookieName = sessionCookie.getName();
+						String cookieValue = sessionCookie.getValue();
+						// compare the cookie names
+						if (cookieName.equalsIgnoreCase(name)) {
+							// if no value given, you don't need to compare it
+							if (value == null || value.isEmpty()) {
+								found = true;
+								break;
+							} else {
+								if (cookieValue.equalsIgnoreCase(value)) {
 									found = true;
 									break;
-								} else {
-									if (cookieValue.equalsIgnoreCase(value)) {
-										found = true;
-										break;
-									}
 								}
 							}
 						}
-						// this cookie could not be found, so we could not find a match
-						if (!found) {
-							logger.debug("Could not match the following cookie against the returned page:\n"+ checkCookie.getName()+ ", "+ checkCookie.getValue());
-							return false;
-						}
 					}
-					// you got through all cookies so all cookies matched
-					return true;
+					// this cookie could not be found, so we could not find a match
+					if (!found) {
+						logger.debug("Could not match the following cookie against the returned page:\n"+ checkCookie.getName()+ ", "+ checkCookie.getValue());
+						return false;
+					}
 				}
-				else{
-					// we could not find any cookies in the page, so this failed our check
-					return false;
-				}
-			} catch (MalformedURLException e) {
-				logger.debug("The ACS URL " + spConfig.getLoginURL() + " from the target's metadata is malformed");
+				// you got through all cookies so all cookies matched
+				return true;
+			}
+			else{
+				// we could not find any cookies in the page, so this failed our check
 				return false;
 			}
-		}
-	}
-
-	/**
-	 * Retrieve the ACS URL provided by the SAML Request
-	 * 
-	 * @return the ACS URL provided by the SAML Request
-	 */
-	private static String getRequestACSURL() {
-		Document authnRequest = SAMLUtil.fromXML(samlRequest);
-		// retrieve the attributes for the first AuthnRequest (which should be the only one) element
-		Node acsURL = authnRequest.getElementsByTagNameNS(SAMLP.NAMESPACE, SAMLP.AUTHNREQUEST).item(0).getAttributes().getNamedItem(SAMLP.ASSERTIONCONSUMERSERVICEURL);
-		if (acsURL == null){
-			return null;
-		}
-		else{
-			return acsURL.getNodeValue();
-		}
-	}
-
-	/**
-	 * Retrieve the ACS URL provided by the SAML Request
-	 * 
-	 * @return the ACS URL provided by the SAML Request
-	 */
-	private static String getRequestACSBinding() {
-		Document authnRequest = SAMLUtil.fromXML(samlRequest);
-		// retrieve the attributes for the first AuthnRequest (which should be the only one) element
-		Node acsURL = authnRequest.getElementsByTagNameNS(SAMLP.NAMESPACE, SAMLP.AUTHNREQUEST).item(0).getAttributes().getNamedItem(SAMLP.PROTOCOLBINDING);
-		if (acsURL == null){
-			return null;
-		}
-		else{
-			return acsURL.getNodeValue();
-		}
-	}
-
-	/**
-	 * Retrieve the ACS index provided by the SAML Request
-	 * 
-	 * @return the ACS index provided by the SAML Request
-	 */
-	private static int getRequestACSIndex() {
-		Document authnRequest = SAMLUtil.fromXML(samlRequest);
-		// retrieve the attributes for the first AuthnRequest (which should be the only one) element
-		Node acsURL = authnRequest.getElementsByTagNameNS(SAMLP.NAMESPACE, SAMLP.AUTHNREQUEST).item(0).getAttributes().getNamedItem(SAMLP.ASSERTIONCONSUMERSERVICEINDEX);
-		if (acsURL == null){
-			return -1;
-		}
-		else{
-			return Integer.parseInt(acsURL.getNodeValue());
 		}
 	}
 }

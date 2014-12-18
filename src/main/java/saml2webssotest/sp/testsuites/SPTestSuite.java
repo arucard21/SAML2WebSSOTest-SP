@@ -4,6 +4,8 @@ import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.StringReader;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -42,22 +44,29 @@ import org.opensaml.saml2.core.Subject;
 import org.opensaml.saml2.core.SubjectConfirmation;
 import org.opensaml.saml2.core.SubjectConfirmationData;
 import org.opensaml.saml2.core.impl.AttributeBuilder;
+import org.opensaml.saml2.metadata.EntityDescriptor;
+import org.opensaml.saml2.metadata.IDPSSODescriptor;
+import org.opensaml.saml2.metadata.KeyDescriptor;
+import org.opensaml.saml2.metadata.SingleSignOnService;
 import org.opensaml.xml.ConfigurationException;
 import org.opensaml.xml.Namespace;
 import org.opensaml.xml.XMLObjectBuilderFactory;
 import org.opensaml.xml.schema.XSString;
+import org.opensaml.xml.security.credential.UsageType;
+import org.opensaml.xml.security.keyinfo.KeyInfoGenerator;
 import org.opensaml.xml.security.x509.BasicX509Credential;
 import org.opensaml.xml.security.x509.X509Credential;
+import org.opensaml.xml.security.x509.X509KeyInfoGeneratorFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import saml2webssotest.common.SAMLAttribute;
+import saml2webssotest.common.SAMLUtil;
 import saml2webssotest.common.StringPair;
 import saml2webssotest.common.TestStatus;
 import saml2webssotest.common.TestSuite;
 import saml2webssotest.common.standardNames.MD;
 import saml2webssotest.common.standardNames.SAMLmisc;
-import saml2webssotest.sp.LoginAttempt;
 import saml2webssotest.sp.SPConfiguration;
 import saml2webssotest.sp.SPTestRunner;
 
@@ -89,7 +98,19 @@ public abstract class SPTestSuite implements TestSuite {
 	 * 
 	 * @return the EntityID for the mock IdP
 	 */
-	public abstract String getmockIdPEntityID();
+	public String getmockIdPEntityID(){
+		return "http://localhost:8080/sso";
+	}
+	
+	@Override
+	public URL getMockServerURL(){
+		try {
+			return new URL("http", "localhost", 8080, "/sso");
+		} catch (MalformedURLException e) {
+			logger.error("The URL of the mock IdP was malformed", e);
+			return null;
+		}
+	}
 	
 	/**
 	 * Get the IdP metadata that should be used in the mock IdP for this test suite.
@@ -98,7 +119,44 @@ public abstract class SPTestSuite implements TestSuite {
 	 * 
 	 * @return: the metadata XML that should be used by the mock IdP when running tests from this test suite
 	 */
-	public abstract String getMockedMetadata();
+	public String getMockedMetadata() {
+		try {
+			DefaultBootstrap.bootstrap();
+		} catch (ConfigurationException e) {
+			logger.error("Could not bootstrap OpenSAML", e);
+		}
+		XMLObjectBuilderFactory xmlbuilderfac = Configuration.getBuilderFactory();		
+		EntityDescriptor ed = (EntityDescriptor) xmlbuilderfac.getBuilder(EntityDescriptor.DEFAULT_ELEMENT_NAME).buildObject(EntityDescriptor.DEFAULT_ELEMENT_NAME);
+		IDPSSODescriptor idpssod = (IDPSSODescriptor) xmlbuilderfac.getBuilder(IDPSSODescriptor.DEFAULT_ELEMENT_NAME).buildObject(IDPSSODescriptor.DEFAULT_ELEMENT_NAME);
+		SingleSignOnService ssos = (SingleSignOnService) xmlbuilderfac.getBuilder(SingleSignOnService.DEFAULT_ELEMENT_NAME).buildObject(SingleSignOnService.DEFAULT_ELEMENT_NAME);
+		KeyDescriptor keydescriptor = (KeyDescriptor) xmlbuilderfac.getBuilder(KeyDescriptor.DEFAULT_ELEMENT_NAME).buildObject(KeyDescriptor.DEFAULT_ELEMENT_NAME);
+		
+		ssos.setBinding(SAMLmisc.BINDING_HTTP_REDIRECT);
+		if (getMockServerURL() == null)
+			return null;
+
+		ssos.setLocation(getMockServerURL().toString());
+
+		X509KeyInfoGeneratorFactory keyInfoGeneratorFactory = new X509KeyInfoGeneratorFactory();
+		keyInfoGeneratorFactory.setEmitEntityCertificate(true);
+		KeyInfoGenerator keyInfoGenerator = keyInfoGeneratorFactory.newInstance();
+		try {
+			keydescriptor.setKeyInfo(keyInfoGenerator.generate(getX509Credentials(null)));
+		} catch (org.opensaml.xml.security.SecurityException e) {
+			e.printStackTrace();
+		}
+		keydescriptor.setUse(UsageType.SIGNING);
+		 
+		idpssod.addSupportedProtocol(SAMLmisc.SAML20_PROTOCOL);
+		idpssod.getSingleSignOnServices().add(ssos);
+		idpssod.getKeyDescriptors().add(keydescriptor);
+		
+		ed.setEntityID(getmockIdPEntityID());
+		ed.getRoleDescriptors().add(idpssod);
+		
+		// return the metadata as a string
+		return SAMLUtil.toXML(ed);
+	}
 
 	/**
 	 * Retrieve the X.509 Certificate that should be used by the mock IdP.
@@ -158,7 +216,7 @@ public abstract class SPTestSuite implements TestSuite {
 		else{
 			credentials.setEntityCertificate(idpCert);
 			credentials.setPublicKey(idpCert.getPublicKey());
-			credentials.setPrivateKey(getIdPPrivateKey(null));
+			credentials.setPrivateKey(getIdPPrivateKey(certLocation));
 			
 			return credentials;
 		}
@@ -171,7 +229,7 @@ public abstract class SPTestSuite implements TestSuite {
      * 			Can be null or empty, in which case a default private key is used 
      * @return: the RSA private key in PEM format
      */
-	public RSAPrivateKey getIdPPrivateKey(String keyLocation){
+	private RSAPrivateKey getIdPPrivateKey(String keyLocation){
 		RSAPrivateKey privateKey = null;
 		String key = "";
 		
@@ -234,6 +292,7 @@ public abstract class SPTestSuite implements TestSuite {
 	 * - set the AudienceRestriction to the SP Entity ID
 	 * - use the Password authentication context
 	 * - set all IssueInstant attributes to the current date and time
+	 * - set the Recipient to the default ACS from the SP metadata
 	 * 
 	 * You can edit the Response as you see fit to customize it to your needs
 	 * 
@@ -268,7 +327,7 @@ public abstract class SPTestSuite implements TestSuite {
 		// create Issuer for Assertion 
 		issuer.setValue(getmockIdPEntityID());
 		// create Subject for Assertion
-		subjectconfdata.setRecipient(sp.getMDACSLocation(SAMLmisc.BINDING_HTTP_POST));
+		subjectconfdata.setRecipient(sp.getApplicableACS(null).getAttributes().getNamedItem(MD.LOCATION).getNodeValue());
 		subjectconfdata.setNotOnOrAfter(DateTime.now().plusMinutes(15));
 		subjectconf.setSubjectConfirmationData(subjectconfdata);
 		subjectconf.setMethod(SAMLmisc.CONFIRMATION_METHOD_BEARER);
@@ -370,27 +429,22 @@ public abstract class SPTestSuite implements TestSuite {
 	}
 
 	public interface LoginTestCase extends TestCase {
-
-		/**
-		 * Retrieve the list of login attempts that should be tested on the SP.
-		 * 
-		 * You should create a class that implements the LoginAttempt interface
-		 * for each login attempt you wish to test. In that class, you should specify
-		 * the SAML Response in the getResponse() method body. This method is provided
-		 * with the SAML Request, which you can use to build your Response. You should
-		 * then add a new instance of this class to a list and return that list. 
-		 * 
-		 * @param request is the SAML Request
-		 * @return the list of login attempts that should be tested on the SP.
-		 */
-		List<LoginAttempt> getLoginAttempts();
 		
 		/**
-		 * Check the results from your login attempts and return the appropriate status
+		 * Check the result a login attempt. 
 		 * 
-		 * @param loginResults is the list of results for each login attempt (true if successful, false otherwise)
+		 * The procedure for this is as follows:
+		 * - Initiate the login attempt with SPTestRunner.initiateLoginAttempt()
+		 * - Specify the Response you wish the mock IdP to send to the target SP
+		 * - Complete the login attempt with SPTestRunner.completeLoginAttempt()
+		 * - Check if the result of the completed login attempt matches your expectations
+		 * 
+		 * You can attempt multiple logins, but it is advisable to use 
+		 * SPTestRunner.resetBrowser() between logins so your previous login attempt is 
+		 * not still in an active session.
+		 * 
 		 * @return the status of the test
 		 */
-		TestStatus checkLoginResults(List<Boolean> loginResults);
+		TestStatus checkLogin();
 	}
 }

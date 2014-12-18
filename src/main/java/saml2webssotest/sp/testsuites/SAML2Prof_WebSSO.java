@@ -3,29 +3,20 @@ package saml2webssotest.sp.testsuites;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
 import javax.net.ssl.HttpsURLConnection;
 
 import org.opensaml.Configuration;
-import org.opensaml.DefaultBootstrap;
+import org.opensaml.saml2.core.SubjectConfirmationData;
 import org.opensaml.saml2.core.Assertion;
 import org.opensaml.saml2.core.NameID;
 import org.opensaml.saml2.core.Response;
 import org.opensaml.saml2.core.SubjectConfirmation;
-import org.opensaml.saml2.metadata.EntityDescriptor;
-import org.opensaml.saml2.metadata.IDPSSODescriptor;
-import org.opensaml.saml2.metadata.KeyDescriptor;
-import org.opensaml.saml2.metadata.SingleSignOnService;
-import org.opensaml.xml.ConfigurationException;
-import org.opensaml.xml.XMLObjectBuilderFactory;
-import org.opensaml.xml.security.credential.UsageType;
-import org.opensaml.xml.security.keyinfo.KeyInfoGenerator;
-import org.opensaml.xml.security.x509.X509KeyInfoGeneratorFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.w3c.dom.Document;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
@@ -34,9 +25,7 @@ import saml2webssotest.common.TestStatus;
 import saml2webssotest.common.standardNames.CipherSuiteNames;
 import saml2webssotest.common.standardNames.MD;
 import saml2webssotest.common.standardNames.SAML;
-import saml2webssotest.common.standardNames.SAMLP;
 import saml2webssotest.common.standardNames.SAMLmisc;
-import saml2webssotest.sp.LoginAttempt;
 import saml2webssotest.sp.SPConfiguration;
 import saml2webssotest.sp.SPTestRunner;
 
@@ -46,60 +35,6 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 	 * Logger for this class
 	 */
 	private final Logger logger = LoggerFactory.getLogger(SAML2Prof_WebSSO.class);
-
-	@Override
-	public String getmockIdPEntityID() {
-		return "http://localhost:8080/sso";
-	}
-
-	public URL getMockServerURL(){
-		try {
-			return new URL("http", "localhost", 8080, "/sso");
-		} catch (MalformedURLException e) {
-			logger.error("The URL of the mock IdP was malformed", e);
-			return null;
-		}
-	}
-
-	@Override
-	public String getMockedMetadata() {
-		try {
-			DefaultBootstrap.bootstrap();
-		} catch (ConfigurationException e) {
-			logger.error("Could not bootstrap OpenSAML", e);
-		}
-		XMLObjectBuilderFactory xmlbuilderfac = Configuration.getBuilderFactory();		
-		EntityDescriptor ed = (EntityDescriptor) xmlbuilderfac.getBuilder(EntityDescriptor.DEFAULT_ELEMENT_NAME).buildObject(EntityDescriptor.DEFAULT_ELEMENT_NAME);
-		IDPSSODescriptor idpssod = (IDPSSODescriptor) xmlbuilderfac.getBuilder(IDPSSODescriptor.DEFAULT_ELEMENT_NAME).buildObject(IDPSSODescriptor.DEFAULT_ELEMENT_NAME);
-		SingleSignOnService ssos = (SingleSignOnService) xmlbuilderfac.getBuilder(SingleSignOnService.DEFAULT_ELEMENT_NAME).buildObject(SingleSignOnService.DEFAULT_ELEMENT_NAME);
-		KeyDescriptor keydescriptor = (KeyDescriptor) xmlbuilderfac.getBuilder(KeyDescriptor.DEFAULT_ELEMENT_NAME).buildObject(KeyDescriptor.DEFAULT_ELEMENT_NAME);
-		
-		ssos.setBinding(SAMLmisc.BINDING_HTTP_REDIRECT);
-		if (getMockServerURL() == null)
-			return null;
-
-		ssos.setLocation(getMockServerURL().toString());
-
-		X509KeyInfoGeneratorFactory keyInfoGeneratorFactory = new X509KeyInfoGeneratorFactory();
-		keyInfoGeneratorFactory.setEmitEntityCertificate(true);
-		KeyInfoGenerator keyInfoGenerator = keyInfoGeneratorFactory.newInstance();
-		try {
-			keydescriptor.setKeyInfo(keyInfoGenerator.generate(getX509Credentials(null)));
-		} catch (org.opensaml.xml.security.SecurityException e) {
-			e.printStackTrace();
-		}
-		keydescriptor.setUse(UsageType.SIGNING);
-		 
-		idpssod.addSupportedProtocol(SAMLmisc.SAML20_PROTOCOL);
-		idpssod.getSingleSignOnServices().add(ssos);
-		idpssod.getKeyDescriptors().add(keydescriptor);
-		
-		ed.setEntityID(getmockIdPEntityID());
-		ed.getRoleDescriptors().add(idpssod);
-		
-		// return the metadata as a string
-		return SAMLUtil.toXML(ed);
-	}
 
 	/**
 	 * Tests the following part of the SAML 2.0 Web Browser SSO Profile: 
@@ -127,7 +62,7 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 		@Override
 		public TestStatus checkConfig(SPConfiguration config) {
 			// retrieve the default ACS location
-			String acsLoc = config.getDefaultMDACSLocation();
+			String acsLoc = config.getApplicableACS(null).getAttributes().getNamedItem(MD.LOCATION).getNodeValue();
 			// access the default ACS location and check if it uses SSL 3.0 or TLS 1.0
 			try {
 				URL acsURL = new URL(acsLoc);
@@ -170,43 +105,6 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 		
 	}
 
-	/**
-	 * Tests the following part of the SAML 2.0 Web Browser SSO Profile: 
-	 * 		The <AuthnRequest> message MAY be signed, if authentication of the request issuer is required.
-	 * 
-	 * @author RiaasM
-	 *
-	 */
-	public class RequestSigned implements RequestTestCase{
-		private String resultMessage; 
-
-		@Override
-		public String getDescription() {
-			return "Test if the Service Provider signs its Authentication Requests (MAY requirement)";
-		}
-
-		@Override
-		public String getResultMessage() {
-			return resultMessage;
-		}
-
-		@Override
-		public TestStatus checkRequest(String request, String binding) {
-			NodeList signatures = SAMLUtil.fromXML(request).getElementsByTagNameNS(SAMLmisc.NAMESPACE_XML_DSIG, SAMLmisc.XML_DSIG_SIGNATURE);
-			// check if there's a signature that's a direct child of the AuthnRequest
-			for (int i = 0; i < signatures.getLength(); i++){
-				Node signature = signatures.item(i);
-				if (signature.getParentNode().getNodeName().equals(SAMLP.AUTHNREQUEST)){
-					resultMessage = "The Service Provider signs its Authentication Requests";
-					return TestStatus.OK;
-				}
-			}
-			// Request was not signed, notify user
-			resultMessage = "The Service Provider did not sign its Authentication Request. If authentication of the request's issuer is required, the request may be signed.";
-			return TestStatus.INFORMATION;
-		}
-	}
-	
 	/**
 	 * Tests the following part of the SAML 2.0 Web Browser SSO Profile: 
 	 * 		The <Issuer> element MUST be present
@@ -370,7 +268,8 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 
 	/**
 	 * Tests the following part of the SAML 2.0 Web Browser SSO Profile: 
-	 * 		Verify any signatures present on the assertion(s) or the response
+	 * 		Regardless of the SAML binding used, the service provider MUST do the following:
+	 * 			- Verify any signatures present on the assertion(s) or the response
 	 * 
 	 * We can test this by trying to authenticate with responses that have invalid signatures and 
 	 * ensuring it fails to log in. 
@@ -382,7 +281,7 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 
 		@Override
 		public String getDescription() {
-			return "Test if the Service Provider allows logging in with either the persistent or transient name identifier format (MUST requirement)";
+			return "Test if the Service Provider correctly verifies the signatures on the assertion and response (MUST requirement)";
 		}
 
 		@Override
@@ -391,102 +290,93 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 		}
 
 		@Override
-		public List<LoginAttempt> getLoginAttempts() {
-			ArrayList<LoginAttempt> attempts = new ArrayList<LoginAttempt>();
-		
-			// create a login attempt with an invalid signature on the assertion
-			class LoginAttemptInvalidSignatureAssertion implements LoginAttempt{
-
-				@Override
-				public boolean isSPInitiated() {
-					return true;
-				}
-				
-				@Override
-				public String getResponse(String request) {
-					// retrieve the request ID from the request
-					String requestID = SAMLUtil.getSamlMessageID(request);
-					
-					// create the minimally required Response
-					Response response = createMinimalWebSSOResponse();
-					// add attributes and sign the assertions in the response
-					List<Assertion> assertions = response.getAssertions();
-					for (Assertion assertion : assertions){
-						// sign the assertion before editing it, so the signature becomes invalid
-						SAMLUtil.sign(assertion, getX509Credentials(null));
-						
-						// create nameid with transient format
-						NameID nameid = (NameID) Configuration.getBuilderFactory().getBuilder(NameID.DEFAULT_ELEMENT_NAME).buildObject(NameID.DEFAULT_ELEMENT_NAME);
-						nameid.setValue("_"+UUID.randomUUID().toString());
-						nameid.setFormat(SAMLmisc.NAMEID_FORMAT_TRANSIENT);
-						assertion.getSubject().setNameID(nameid);
-
-						// set the InReplyTo attribute on the subjectconfirmationdata of all subjectconfirmations
-						List<SubjectConfirmation> subconfs = assertion.getSubject().getSubjectConfirmations();
-						for (SubjectConfirmation subconf : subconfs){
-							subconf.getSubjectConfirmationData().setInResponseTo(requestID);
-						}
-						// add the attributes
-						addTargetSPAttributes(assertion);
-					}
-					// add the InReplyTo attribute to the Response as well
-					response.setInResponseTo(requestID);
-					return SAMLUtil.toXML(response);
-				}
-			}
+		public TestStatus checkLogin() {
+			SPTestRunner.initiateLoginAttempt(true);
+			// retrieve the request ID from the request
+			String requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getSamlRequest());
 			
-			// create a login attempt with an invalid signature on the response
-			class LoginAttemptInvalidSignatureResponse implements LoginAttempt{
-
-				@Override
-				public boolean isSPInitiated() {
-					return true;
-				}
+			// create the minimally required Response
+			Response response = createMinimalWebSSOResponse();
+			// add attributes and sign the assertions in the response
+			List<Assertion> assertions = response.getAssertions();
+			for (Assertion assertion : assertions){
 				
-				@Override
-				public String getResponse(String request) {
-					// retrieve the request ID from the request
-					String requestID = SAMLUtil.getSamlMessageID(request);
-					
-					// create the minimally required Response
-					Response response = createMinimalWebSSOResponse();
-					// add attributes and sign the assertions in the response
-					List<Assertion> assertions = response.getAssertions();
-					for (Assertion assertion : assertions){
-						// create nameid with transient format
-						NameID nameid = (NameID) Configuration.getBuilderFactory().getBuilder(NameID.DEFAULT_ELEMENT_NAME).buildObject(NameID.DEFAULT_ELEMENT_NAME);
-						nameid.setValue("_"+UUID.randomUUID().toString());
-						nameid.setFormat(SAMLmisc.NAMEID_FORMAT_TRANSIENT);
-						assertion.getSubject().setNameID(nameid);
+				// create nameid with transient format
+				NameID nameid = (NameID) Configuration.getBuilderFactory().getBuilder(NameID.DEFAULT_ELEMENT_NAME).buildObject(NameID.DEFAULT_ELEMENT_NAME);
+				nameid.setValue("_"+UUID.randomUUID().toString());
+				nameid.setFormat(SAMLmisc.NAMEID_FORMAT_TRANSIENT);
+				assertion.getSubject().setNameID(nameid);
 
-						// set the InReplyTo attribute on the subjectconfirmationdata of all subjectconfirmations
-						List<SubjectConfirmation> subconfs = assertion.getSubject().getSubjectConfirmations();
-						for (SubjectConfirmation subconf : subconfs){
-							subconf.getSubjectConfirmationData().setInResponseTo(requestID);
-						}
-						// add the attributes
-						addTargetSPAttributes(assertion);
-						SAMLUtil.sign(assertion, getX509Credentials(null));
-					}
-					SAMLUtil.sign(response, getX509Credentials(null));
-					// add the InReplyTo attribute to the Response after signing so the signature will become invalid
-					response.setInResponseTo(requestID);
-					return SAMLUtil.toXML(response);
+				// set the InReplyTo attribute on the subjectconfirmationdata of all subjectconfirmations
+				List<SubjectConfirmation> subconfs = assertion.getSubject().getSubjectConfirmations();
+				for (SubjectConfirmation subconf : subconfs){
+					subconf.getSubjectConfirmationData().setInResponseTo(requestID);
 				}
-			}
-			attempts.add(new LoginAttemptInvalidSignatureAssertion());
-			attempts.add(new LoginAttemptInvalidSignatureResponse());
-			return attempts;
-		}
+				// add the attributes
+				addTargetSPAttributes(assertion);
 
-		@Override
-		public TestStatus checkLoginResults(List<Boolean> loginResults) {
-			// the results should come back in the same order as they were provided, so we can check which login attempts succeeded
-			if (loginResults.get(0).booleanValue()){	
+				// sign the assertion before editing it, so the signature becomes invalid
+				SAMLUtil.sign(assertion, getX509Credentials(null));
+			}
+			// add the InReplyTo attribute to the Response as well
+			response.setInResponseTo(requestID);
+			// convert the Response to an XML string and replace the signature with an invalid one 
+			String responseInvalSigAssertion = SAMLUtil.toXML(response).replaceAll(
+					"SignatureValue>[^<]*</", 
+					"SignatureValue>VGhpcyBpcyB0aGUgaW52YWxpZCBzaWduYXR1cmUgdGhhdCB3aWxsIGJlIGVuY29kZWQgaW4gQmFzZTY0IGFuZCB3aWxsIHJlcGxhY2UgdGhlIHZhbGlkIHNpZ25hdHVyZQ==</");
+			// Note that the invalid signature is the Base64-encoded string "This is the invalid signature that will be encoded in Base64 and will replace the valid signature"
+			
+			Boolean loginInvalSigAssertion = SPTestRunner.completeLoginAttempt(responseInvalSigAssertion);
+			
+			logger.debug("Finished the assertion signature login, starting the response signature login");
+			
+			SPTestRunner.resetBrowser();
+			
+			SPTestRunner.initiateLoginAttempt(true);
+			// retrieve the new request ID
+			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getSamlRequest());
+			
+			// reset the Response to the minimally required Response
+			response = createMinimalWebSSOResponse();
+			// add attributes and sign the assertions in the reset Response
+			assertions = response.getAssertions();
+			for (Assertion assertion : assertions){
+				// create nameid with transient format
+				NameID nameid = (NameID) Configuration.getBuilderFactory().getBuilder(NameID.DEFAULT_ELEMENT_NAME).buildObject(NameID.DEFAULT_ELEMENT_NAME);
+				nameid.setValue("_"+UUID.randomUUID().toString());
+				nameid.setFormat(SAMLmisc.NAMEID_FORMAT_TRANSIENT);
+				assertion.getSubject().setNameID(nameid);
+
+				// set the InReplyTo attribute on the subjectconfirmationdata of all subjectconfirmations
+				List<SubjectConfirmation> subconfs = assertion.getSubject().getSubjectConfirmations();
+				for (SubjectConfirmation subconf : subconfs){
+					subconf.getSubjectConfirmationData().setInResponseTo(requestID);
+				}
+				// add the attributes
+				addTargetSPAttributes(assertion);
+			}
+			Document request = SAMLUtil.fromXML(SPTestRunner.getSamlRequest());
+			response.setDestination(SPTestRunner.getSPConfig().getApplicableACS(request).getAttributes().getNamedItem(MD.LOCATION).getNodeValue());
+			// add the InReplyTo attribute to the Response after signing so the signature will become invalid
+			response.setInResponseTo(requestID);
+			SAMLUtil.sign(response, getX509Credentials(null));
+			String responseInvalSigResponse = SAMLUtil.toXML(response).replaceAll(
+					"SignatureValue>[^<]*</", 
+					"SignatureValue>VGhpcyBpcyB0aGUgaW52YWxpZCBzaWduYXR1cmUgdGhhdCB3aWxsIGJlIGVuY29kZWQgaW4gQmFzZTY0IGFuZCB3aWxsIHJlcGxhY2UgdGhlIHZhbGlkIHNpZ25hdHVyZQ==</");
+			// Note that the invalid signature is the Base64-encoded string "This is the invalid signature that will be encoded in Base64 and will replace the valid signature"
+			
+			Boolean loginInvalSigResponse = SPTestRunner.completeLoginAttempt(responseInvalSigResponse);
+			
+			
+			if (loginInvalSigAssertion == null || loginInvalSigResponse == null){
+				logger.debug("The login attempt could not be completed");
+				return TestStatus.CRITICAL;
+			}
+			else if (loginInvalSigAssertion){	
 				// the invalid signature on the assertion was ignored and login succeeded anyway
-				if (loginResults.get(1).booleanValue()){
+				if (loginInvalSigResponse){
 					// the invalid signature on the response was also ignored and login succeeded anyway
-					resultMessage = "The Service Provider did not check any signatures";
+					resultMessage = "The Service Provider did not check the signatures on either the Assertions or the Response";
 					return TestStatus.ERROR;
 				}
 				else{
@@ -497,16 +387,146 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			}
 			else{
 				// the invalid signature on the assertion was not ignored and login failed as it should
-				if (loginResults.get(1).booleanValue()){
+				if (loginInvalSigResponse){
 					// the invalid signature on the response was ignored and login succeeded anyway
 					resultMessage = "The Service Provider did not check the Response signature";
 					return TestStatus.ERROR;
 				}
 				else{
 					// the invalid signature on both the assertion and the response weren't ignored and both logins failed as they should
-					resultMessage = "The Service Provider checked all signatures";
+					resultMessage = "The Service Provider checked the signatures on both the Assertions and the Response";
 					return TestStatus.OK;
 				}
+			}
+		}
+	}
+
+	/**
+	 * Tests the following part of the SAML 2.0 Web Browser SSO Profile: 
+	 * 		Regardless of the SAML binding used, the service provider MUST do the following:
+	 * 			[...]
+	 * 			- Verify that the Recipient attribute in any bearer <SubjectConfirmationData> matches the assertion consumer service URL 
+	 * 			  to which the <Response> or artifact was delivered
+	 *  
+	 * @author RiaasM
+	 */
+	public class LoginRecipientVerification implements LoginTestCase{
+		private String resultMessage;
+	
+		@Override
+		public String getDescription() {
+			return "Test if the Service Provider correctly verifies that the Recipient matches the URL on which the Response was received (MUST requirement)";
+		}
+	
+		@Override
+		public String getResultMessage() {
+			return resultMessage;
+		}
+	
+		@Override
+		public TestStatus checkLogin() {
+			/**
+			 * Check if the target SP rejects a login attempt when the Recipient does not match the ACS URL on which it was delivered
+			 */
+			
+			SPTestRunner.initiateLoginAttempt(true);
+			
+			// retrieve the request ID from the request
+			String requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getSamlRequest());
+			
+			// create the minimally required Response
+			Response response = createMinimalWebSSOResponse();
+			// add attributes and sign the assertions in the response
+			List<Assertion> assertions = response.getAssertions();
+			for (Assertion assertion : assertions){						
+				// create nameid with transient format
+				NameID nameid = (NameID) Configuration.getBuilderFactory().getBuilder(NameID.DEFAULT_ELEMENT_NAME).buildObject(NameID.DEFAULT_ELEMENT_NAME);
+				nameid.setValue("_"+UUID.randomUUID().toString());
+				nameid.setFormat(SAMLmisc.NAMEID_FORMAT_TRANSIENT);
+				assertion.getSubject().setNameID(nameid);
+
+				// set the InReplyTo attribute on the subjectconfirmationdata of all subjectconfirmations
+				List<SubjectConfirmation> subconfs = assertion.getSubject().getSubjectConfirmations();
+				for (SubjectConfirmation subconf : subconfs){
+					SubjectConfirmationData subconfdata = (SubjectConfirmationData) subconf.getSubjectConfirmationData();
+					subconfdata.setInResponseTo(requestID);
+					// set all recipients to an invalid location (but still a valid URL)
+					subconfdata.setRecipient("http://www.topdesk.com/");
+				}
+				// add the attributes
+				addTargetSPAttributes(assertion);
+				
+				// sign the assertion
+				SAMLUtil.sign(assertion, getX509Credentials(null));
+			}
+			// add the InReplyTo attribute to the Response as well
+			response.setInResponseTo(requestID);
+			String responseInvalRecipient = SAMLUtil.toXML(response);
+			
+			Boolean loginInvalRecipient = SPTestRunner.completeLoginAttempt(responseInvalRecipient);
+
+			if (loginInvalRecipient == null){
+				logger.debug("The login attempt could not be completed");
+				return TestStatus.CRITICAL;
+			}
+			if (loginInvalRecipient){
+				// the invalid recipient should cause the login attempt to fail but login succeeded
+				resultMessage = "The Service Provider did not verify if the Recipient matches the URL on which the Response was received";
+				return TestStatus.ERROR;
+			}
+			
+			/**
+			 * Check if the target SP also allows a login attempt if the Recipient does match the ACS URL on which it was delivered
+			 */
+			
+			SPTestRunner.resetBrowser();
+			
+			SPTestRunner.initiateLoginAttempt(true);
+			// retrieve the new request ID
+			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getSamlRequest());
+			
+			// reset the Response to the minimally required Response
+			response = createMinimalWebSSOResponse();
+			// add attributes and sign the assertions in the response (this time leaving the recipient to its original, correct value)
+			assertions = response.getAssertions();
+			for (Assertion assertion : assertions){						
+				// create nameid with transient format
+				NameID nameid = (NameID) Configuration.getBuilderFactory().getBuilder(NameID.DEFAULT_ELEMENT_NAME).buildObject(NameID.DEFAULT_ELEMENT_NAME);
+				nameid.setValue("_"+UUID.randomUUID().toString());
+				nameid.setFormat(SAMLmisc.NAMEID_FORMAT_TRANSIENT);
+				assertion.getSubject().setNameID(nameid);
+
+				// set the InReplyTo attribute on the subjectconfirmationdata of all subjectconfirmations
+				List<SubjectConfirmation> subconfs = assertion.getSubject().getSubjectConfirmations();
+				for (SubjectConfirmation subconf : subconfs){
+					SubjectConfirmationData subconfdata = (SubjectConfirmationData) subconf.getSubjectConfirmationData();
+					subconfdata.setInResponseTo(requestID);
+				}
+				// add the attributes
+				addTargetSPAttributes(assertion);
+				
+				// sign the assertion
+				SAMLUtil.sign(assertion, getX509Credentials(null));
+			}
+			// add the InReplyTo attribute to the Response as well
+			response.setInResponseTo(requestID);
+			String responseValidRecipient = SAMLUtil.toXML(response);
+			
+			Boolean loginValidRecipient = SPTestRunner.completeLoginAttempt(responseValidRecipient);
+
+			if (loginValidRecipient == null){
+				logger.debug("The login attempt could not be completed");
+				return TestStatus.CRITICAL;
+			}
+			if (loginValidRecipient){
+				// the valid recipient should cause the login attempt to succeed and it did
+				resultMessage = "The Service Provider verified if the Recipient did matches the URL on which the Response was received";
+				return TestStatus.OK;
+			}
+			else{
+				// the valid recipient should cause the login attempt to succeed, but it failed
+				resultMessage = "The Service Provider did not verify if the Recipient matches the URL on which the Response was received";
+				return TestStatus.ERROR;
 			}
 		}
 	}
