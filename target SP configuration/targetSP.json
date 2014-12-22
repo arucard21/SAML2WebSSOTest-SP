@@ -1,5 +1,6 @@
 {
 	startPage: "<url>",
+	clockSkew: 0,
 	metadata: "<string>",
 	loginStatuscode: 200,
 	loginURL: "<url>",

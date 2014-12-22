@@ -3,11 +3,17 @@ package saml2webssotest.sp.testsuites;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.security.GeneralSecurityException;
+import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
 import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 
@@ -23,6 +29,8 @@ import org.w3c.dom.NamedNodeMap;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
+
+import com.gargoylesoftware.htmlunit.WebClient;
 
 import saml2webssotest.common.SAMLAttribute;
 import saml2webssotest.common.SAMLUtil;
@@ -330,18 +338,19 @@ public class SAML2Int extends SPTestSuite {
 
 		@Override
 		public TestStatus checkLogin() {
-			
+			// get a browser to test in
+			WebClient browser = SPTestRunner.getNewBrowser();
 			/**
 			 * Initiate a login attempt (SP-initiated)
 			 */
-			SPTestRunner.initiateLoginAttempt(true);
+			Node acs = SPTestRunner.initiateLoginAttempt(browser, true);
 			
 			/**
 			 * Create the Response we wish the mock IdP to return 
 			 */
 			
 			// retrieve the request ID from the SAML Request
-			String requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getSamlRequest());
+			String requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getAuthnRequest());
 			
 			// create the minimally required Response
 			Response response = createMinimalWebSSOResponse();			
@@ -372,19 +381,19 @@ public class SAML2Int extends SPTestSuite {
 			/**
 			 * Complete the login attempt
 			 */
-			Boolean loginTransient = SPTestRunner.completeLoginAttempt(responseTransient);
+			Boolean loginTransient = SPTestRunner.completeLoginAttempt(browser, acs, responseTransient);
 			
 			/**
 			 * Reset the browser so we can try another login attempt
 			 */
-			SPTestRunner.resetBrowser();
+			browser = SPTestRunner.getNewBrowser();
 
 			/**
 			 * Initiate the login attempt again
 			 */
-			SPTestRunner.initiateLoginAttempt(true);
+			acs = SPTestRunner.initiateLoginAttempt(browser, true);
 			// retrieve the new request ID
-			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getSamlRequest());
+			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getAuthnRequest());
 			
 			/**
 			 * Create the Response we wish the mock IdP to return this time
@@ -404,7 +413,7 @@ public class SAML2Int extends SPTestSuite {
 			/**
 			 * Complete this second login attempt
 			 */
-			Boolean loginPersistent = SPTestRunner.completeLoginAttempt(responsePersistent);
+			Boolean loginPersistent = SPTestRunner.completeLoginAttempt(browser, acs, responsePersistent);
 			
 			/**
 			 * Check the results of the login attempts
@@ -458,10 +467,12 @@ public class SAML2Int extends SPTestSuite {
 
 		@Override
 		public TestStatus checkLogin() {
+			// get a browser to test in
+			WebClient browser = SPTestRunner.getNewBrowser();
 			/**
 			 * Initiate the login attempt
 			 */
-			SPTestRunner.initiateLoginAttempt(false);
+			Node acs = SPTestRunner.initiateLoginAttempt(browser, false);
 			
 			/**
 			 * Create the Response we wish the mock IdP to return
@@ -485,7 +496,7 @@ public class SAML2Int extends SPTestSuite {
 			/**
 			 * Complete the login attempt
 			 */
-			Boolean loginIdPInitiated = SPTestRunner.completeLoginAttempt(responseIdPInitiated);
+			Boolean loginIdPInitiated = SPTestRunner.completeLoginAttempt(browser, acs, responseIdPInitiated);
 			
 			/**
 			 * Check the result of the login attempt
@@ -901,6 +912,31 @@ public class SAML2Int extends SPTestSuite {
 						try {
 							URL ACSLocURL = new URL(ACSLoc);
 							if (ACSLocURL.getProtocol().equalsIgnoreCase("https")){
+								// Create a trust manager that does not validate certificate chains
+								TrustManager[] trustAllCerts = new TrustManager[] { 
+								    new X509TrustManager() {
+										
+										@Override
+										public X509Certificate[] getAcceptedIssuers() {
+											return new X509Certificate[0];
+										}
+										
+										@Override
+										public void checkServerTrusted(X509Certificate[] chain, String authType) throws CertificateException {				
+										}
+										
+										@Override
+										public void checkClientTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+										}
+									}};
+
+								// Install the all-trusting trust manager
+								try {
+								    SSLContext sc = SSLContext.getInstance("SSL"); 
+								    sc.init(null, trustAllCerts, new java.security.SecureRandom()); 
+								    HttpsURLConnection.setDefaultSSLSocketFactory(sc.getSocketFactory());
+								} catch (GeneralSecurityException e) {
+								} 
 								// connect to the URL to retrieve which cipher is actually used
 								HttpsURLConnection acsConn = (HttpsURLConnection) ACSLocURL.openConnection();
 								acsConn.connect();

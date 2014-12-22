@@ -24,6 +24,10 @@ public class SPConfiguration {
 	 */
 	private String startPage;
 	/**
+	 * Contains the clock skew (in milliseconds) that is allowed on the target SP
+	 */
+	private int clockSkew;
+	/**
 	 * Contains the metadata from the target SP. This is used for metadata test cases and to register the target SP with the mock IdP
 	 */
 	private Document metadata;
@@ -68,6 +72,12 @@ public class SPConfiguration {
 	}
 	public void setStartPage(String startPage) {
 		this.startPage = startPage;
+	}
+	public int getClockSkew() {
+		return clockSkew;
+	}
+	public void setClockSkew(int clockSkew) {
+		this.clockSkew = clockSkew;
 	}
 	public Document getMetadata() {
 		return metadata;

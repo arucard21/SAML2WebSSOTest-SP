@@ -88,26 +88,9 @@ public class SPTestRunner {
 	 */
 	private static String samlRequestBinding;
 	/**
-	 * Contains the HTTP request made in order to send the Response to the target SP
-	 */
-	private static WebRequest sentResponse;
-	/**
-	 * Contains the ACS URL to which the mock IdP should send its Response
-	 */
-	private static URL applicableACSURL;
-	/**
-	 * Contains the binding the mock IdP should use when sending its Response to the ACS 
-	 */
-	private static String applicableACSBinding;
-	/**
 	 * Contains the mock IdP server
 	 */
 	private static Server mockIdP;
-	/**
-	 * The browser which will be used to connect to the SP
-	 */
-	private static final WebClient browser = new WebClient();
-	
 	/**
 	 * Contains the command-line options
 	 */
@@ -174,11 +157,7 @@ public class SPTestRunner {
 						System.exit(0);
 					}
 
-					// configure the browser that will be used during testing
-					browser.getOptions().setRedirectEnabled(true);
-					if (command.hasOption("insecure")) {
-						browser.getOptions().setUseInsecureSSL(true);
-					}
+					
 					
 					// load target SP config
 					if (command.hasOption("spconfig")) {
@@ -206,9 +185,21 @@ public class SPTestRunner {
 
 					// run the test case(s) from the test suite
 					for(TestCase testcase: testcases){
-						TestStatus status = runTest(testcase);
+						TestStatus status;
+						String resultMessage;
+						try{
+							status = runTest(testcase);
+							resultMessage = testcase.getResultMessage();
+						}
+						catch(Exception e){
+							// make sure any exceptions thrown while running a test are caught here
+							// so they don't cause all other tests to be cancelled
+							logger.error("An exception occurred while running test case: " + testcase.getClass().getSimpleName(), e);
+							status = TestStatus.CRITICAL;
+							resultMessage = "The following exception has occurred (See the log for the full stacktrace): " + e.toString();
+						}
 						
-						TestResult result = new TestResult(status, testcase.getResultMessage());
+						TestResult result = new TestResult(status, resultMessage);
 						result.setName(testcase.getClass().getSimpleName());
 						result.setDescription(testcase.getDescription());
 						// add this test result to the list of test results
@@ -261,7 +252,6 @@ public class SPTestRunner {
 	private static TestStatus runTest(TestCase testcase) {
 		logger.info("Running testcase: "+ testcase.getClass().getSimpleName());
 		
-		
 		// run the test case according to what type of test case it is
 		if (testcase instanceof ConfigTestCase) {
 			ConfigTestCase cfTestcase = (ConfigTestCase) testcase;
@@ -284,7 +274,10 @@ public class SPTestRunner {
 			RequestTestCase reqTC = (RequestTestCase) testcase;
 			// make the SP send the AuthnRequest by starting an SP-initiated login attempt
 			try {
-				initiateLoginAttempt(true);
+				WebClient browser = getNewBrowser();
+				initiateLoginAttempt(browser, true);
+				browser = getNewBrowser();
+				
 				//TestRunnerUtil.interactWithPage(browser.getPage(spConfig.getStartPage()), spConfig.getPreLoginInteractions());
 				if (samlRequest != null && !samlRequest.isEmpty()) {
 					logger.debug("Testing the AuthnRequest");
@@ -294,7 +287,7 @@ public class SPTestRunner {
 					 * test case and return the status of the test
 					 */
 					TestStatus requestResult = reqTC.checkRequest(samlRequest,samlRequestBinding);
-					resetBrowser();
+					
 					return requestResult;
 				} else {
 					logger.error("Could not retrieve the SAML Request that was sent by the target SP");
@@ -310,7 +303,6 @@ public class SPTestRunner {
 			 * Check if login attempts are handled correctly
 			 */
 			TestStatus loginResult = loginTC.checkLogin();
-			resetBrowser();
 			return loginResult;
 		} else {
 			logger.error("Trying to run an unknown type of test case");
@@ -319,46 +311,46 @@ public class SPTestRunner {
 	}
 
 	/**
-	 * Initiate a login attempt at the target SP. 
+	 * Initiate a login attempt at the target SP.
 	 * 
-	 * This will initiate the login process by causing the target SP to send an 
-	 * AuthnRequest (if SP-initiated), storing the AuthnRequest that was received 
-	 * by the mock IdP (if SP-initiated) and figuring out which ACS URL and binding 
-	 * the mock IdP should use.
+	 * This will initiate the login process by causing the target SP to send an AuthnRequest (if SP-initiated), storing the AuthnRequest
+	 * that was received by the mock IdP (if SP-initiated) and returning the ACS Node the mock IdP should use.
 	 * 
-	 * @param spInitiated defines whether the login attempt should be SP-initiated 
+	 * @param browser
+	 *            is the browser in which to initiate the login attempts
+	 * @param spInitiated
+	 *            defines whether the login attempt should be SP-initiated
+	 * @return a Node representing the ACS to which the Response should be sent. Note that the returned Node may not be the actual Node in
+	 *         the metadata of the targetSP since it could have been created from the information in the request.
 	 */
-	public static void initiateLoginAttempt(boolean spInitiated){
+	public static Node initiateLoginAttempt(WebClient browser, boolean spInitiated){
 		Node applicableACS;
 		// determine the ACS location and binding, depending on the received SAML Request
 		try {
-		if(spInitiated){
-			// retrieve the login page, thereby sending the AuthnRequest to the mock IdP
+			if (spInitiated) {
+				// retrieve the login page, thereby sending the AuthnRequest to the mock IdP
 				TestRunnerUtil.interactWithPage(browser.getPage(spConfig.getStartPage()), spConfig.getPreLoginInteractions());
-			// check if the saml request has correctly been retrieved by the mock IdP 
-			// if not, most likely caused by trying to use artifact binding
-			if (samlRequest == null || samlRequest.isEmpty()) {
-				logger.error("Could not retrieve the SAML request after SP-initiated login attempt");
+				// check if the saml request has correctly been retrieved by the mock IdP
+				if (samlRequest == null || samlRequest.isEmpty()) {
+					logger.error("Could not retrieve the SAML request after SP-initiated login attempt");
+				}
+				applicableACS = spConfig.getApplicableACS(SAMLUtil.fromXML(samlRequest));
 			}
-			applicableACS = spConfig.getApplicableACS(SAMLUtil.fromXML(samlRequest));
-		}
-		else{
-			// go directly to the IdP page without an AuthnRequest (for idp-initiated authentication)
-			browser.getPage(testsuite.getMockServerURL().toString());		
-			applicableACS = spConfig.getApplicableACS(null);
-		}
-		
-		// try to retrieve the location and binding of the ACS where this should be sent from the request
-		applicableACSURL = new URL(applicableACS.getAttributes().getNamedItem(MD.LOCATION).getNodeValue());
-		applicableACSBinding = applicableACS.getAttributes().getNamedItem(MD.BINDING).getNodeValue();
-		
-		} catch (FailingHttpStatusCodeException e){
+			else {
+				// go directly to the IdP page without an AuthnRequest (for idp-initiated authentication)
+				browser.getPage(testsuite.getMockServerURL().toString());
+				applicableACS = spConfig.getApplicableACS(null);
+			}
+			return applicableACS;
+
+		} catch (FailingHttpStatusCodeException e) {
 			logger.error("Could not retrieve browser page for the LoginTestCase", e);
 		} catch (MalformedURLException e) {
 			logger.error("The URL for the start page was malformed", e);
 		} catch (IOException e) {
 			logger.error("An I/O exception occurred while trying to access the start page", e);
 		}
+		return null;
 	}
 	/**
 	 * Finish trying to log in to the target SP with the mock IdP returning the provided SAML Response.
@@ -366,16 +358,19 @@ public class SPTestRunner {
 	 * Note that you should have first initiated the login attempt with initiateLogin() in order for
 	 * the mock IdP to know which ACS URL and binding should be used 
 	 * 
-	 * 
+	 * @param browser is the browser in which we should complete our login attempt. Note
+	 * that this must be the same browser as the one in which we initiated our login attempt
 	 * @param response is the SAML Response that should be returned by the mock IdP
 	 * @return a Boolean object with value true if the login attempt was successful, false if 
 	 * the login attempt failed and null if the login attempt could not be completed
 	 */
-	public static Boolean completeLoginAttempt(String response){
+	public static Boolean completeLoginAttempt(WebClient browser, Node acs, String response){
 		// start login attempt with target SP
 		try {
+			URL applicableACSURL = new URL(acs.getAttributes().getNamedItem(MD.LOCATION).getNodeValue());
+			String applicableACSBinding = acs.getAttributes().getNamedItem(MD.BINDING).getNodeValue();
 			// create HTTP request to send the SAML response to the SP's ACS url
-			sentResponse = new WebRequest(applicableACSURL, HttpMethod.POST);
+			WebRequest sentResponse = new WebRequest(applicableACSURL, HttpMethod.POST);
 			ArrayList<NameValuePair> postParameters = new ArrayList<NameValuePair>();
 			NameValuePair samlresponse;
 			// set the SAML URL parameter according to the requested binding
@@ -405,7 +400,7 @@ public class SPTestRunner {
 			if (checkLoginHTTPStatusCode(responsePage) 
 					&& checkLoginURL(responsePage) 
 					&& checkLoginContent(responsePage) 
-					&& checkLoginCookies(responsePage)) {
+					&& checkLoginCookies(browser.getCookies(applicableACSURL))) {
 				return new Boolean(true);
 			}
 			else{
@@ -421,27 +416,20 @@ public class SPTestRunner {
 	}
 	
 	/**
-	 * Retrieves the browser that is used by the test runner. 
+	 * Retrieves a browser that can be used by the test runner. 
 	 * 
-	 * This allows performing additional actions in the browser, if required by 
-	 * any test case. 
+	 * The browser is created and configured according to any user-supplied options 
 	 * 
-	 * @return the WebClient used as browser by the test runner.
+	 * @return a new WebClient object that can be used as browser by the test runner.
 	 */
-	public static WebClient getBrowser(){
+	public static WebClient getNewBrowser(){
+		WebClient browser = new WebClient();
+		// configure the browser that will be used during testing
+		browser.getOptions().setRedirectEnabled(true);
+		if (command.hasOption("insecure")) {
+			browser.getOptions().setUseInsecureSSL(true);
+		}
 		return browser;
-	}
-	
-	/**
-	 * Resets the WebClient object used as browser.
-	 * 
-	 * This will close all browser windows and clear all cookies and cache
-	 */
-	public static void resetBrowser() {
-		// close the browser windows after each test case
-		browser.getCache().clear();
-		browser.getCookieManager().clearCookies();
-		browser.closeAllWindows();
 	}
 
 	/**
@@ -453,7 +441,7 @@ public class SPTestRunner {
 	 * 
 	 * @param request is the SAML Request
 	 */
-	public static String getSamlRequest() {
+	public static String getAuthnRequest() {
 		return samlRequest;
 	}
 	/**
@@ -488,17 +476,8 @@ public class SPTestRunner {
 	public static SPConfiguration getSPConfig() {
 		return spConfig;
 	}
-	
-	/**
-	 * Retrieve the HTTP request used to send the Response to the target SP (might not be needed)
-	 * 
-	 * @return the WebRequest object used to send the Response
-	 *//*
-	public static WebRequest getSentResponse() {
-		return sentResponse;
-	}*/
 
-	private static boolean checkLoginHTTPStatusCode(HtmlPage page){
+	public static boolean checkLoginHTTPStatusCode(HtmlPage page){
 		// check the HTTP Status code of the page to see if the login was successful
 		if (spConfig.getLoginStatuscode() == 0) {
 			// do not match against status code
@@ -513,7 +492,7 @@ public class SPTestRunner {
 		}
 	}
 
-	private static boolean checkLoginURL(HtmlPage responsePage) {
+	public static boolean checkLoginURL(HtmlPage responsePage) {
 		// check the URL of the page to see if the login was successful
 		if (spConfig.getLoginURL() == null) {
 			// do not match against URL
@@ -541,7 +520,7 @@ public class SPTestRunner {
 		}
 	}
 
-	private static boolean checkLoginContent(HtmlPage responsePage) {
+	public static boolean checkLoginContent(HtmlPage responsePage) {
 		// check if the page matches what we expect to see when we log in
 		String page = responsePage.getWebResponse().getContentAsString();
 		if (spConfig.getLoginContent() == null) {
@@ -562,14 +541,13 @@ public class SPTestRunner {
 		}
 	}
 
-	private static boolean checkLoginCookies(HtmlPage responsePage) {
+	public static boolean checkLoginCookies(Set<Cookie> sessionCookies) {
 		// check the cookies
 		if (spConfig.getLoginCookies().size() <= 0) {
 			// do not check cookies
 			return true;
 		} else {
 			ArrayList<StringPair> checkCookies = spConfig.getLoginCookies();
-			Set<Cookie> sessionCookies = browser.getCookies(sentResponse.getUrl());
 
 			// only check for cookies if we actually have some to match against
 			if (checkCookies.size() > 0) {

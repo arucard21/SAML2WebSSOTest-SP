@@ -285,9 +285,11 @@ public abstract class SPTestSuite implements TestSuite {
 	 * 
 	 * This creates the minimal SAML Response that is valid for the Web SSO profile.
 	 * It will:
+	 * - contain a single Assertion
+	 * - contain a valid AuthnStatement
 	 * - generate random UUID-based ID's for the Assertion and Response
 	 * - use the AssertionConsumerService URL for the POST binding as Recipient
-	 * - use a validity period of 15 minutes from now
+	 * - use a validity period of 5 minutes from now (NotOnOrAfter)
 	 * - use the bearer method for SubjectConfirmation
 	 * - set the AudienceRestriction to the SP Entity ID
 	 * - use the Password authentication context
@@ -328,7 +330,7 @@ public abstract class SPTestSuite implements TestSuite {
 		issuer.setValue(getmockIdPEntityID());
 		// create Subject for Assertion
 		subjectconfdata.setRecipient(sp.getApplicableACS(null).getAttributes().getNamedItem(MD.LOCATION).getNodeValue());
-		subjectconfdata.setNotOnOrAfter(DateTime.now().plusMinutes(15));
+		subjectconfdata.setNotOnOrAfter(DateTime.now().plusMinutes(5));
 		subjectconf.setSubjectConfirmationData(subjectconfdata);
 		subjectconf.setMethod(SAMLmisc.CONFIRMATION_METHOD_BEARER);
 		subject.getSubjectConfirmations().add(subjectconf);
@@ -446,5 +448,65 @@ public abstract class SPTestSuite implements TestSuite {
 		 * @return the status of the test
 		 */
 		TestStatus checkLogin();
+		
+		/*
+		 * The following example implementation tests if the target SP allows SP-initiated login attempts with a signed Response message. 
+		 * It can be used as a reference and/or template for implementing the checkLogin() method: 
+		 * 
+		 @Override
+		 public TestStatus checkLogin() {
+		 	// get a browser to test in
+			WebClient browser = SPTestRunner.getNewBrowser();
+			// initiate the login attempt at the target SP
+			SPTestRunner.initiateLoginAttempt(browser, true);
+			// retrieve the ID of the AuthnRequest
+			String requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getAuthnRequest());
+			// create the minimally required (by the SAML Web SSO profile) Response 
+			Response response = createMinimalWebSSOResponse();
+			// get all Assertion elements from the Response
+			List<Assertion> assertions = response.getAssertions();
+			// if more than 1 assertion was created in the minimal Response, we should log it since it means something 
+			// has changed in the test framework's  code
+			if (assertions.size() > 1) {
+				logger.debug("The minimal Web SSO Response was created with more than 1 Assertion");
+			}
+			// retrieve the first Assertion element, which should also be the only one
+			Assertion assertion = assertions.get(0);
+			// set the InReplyTo attribute on the SubjectConfirmationData element of every SubjectConfirmations element
+			// this is required for SP-initiated login attempts
+			List<SubjectConfirmation> subConfs = assertion.getSubject().getSubjectConfirmations();
+			for (SubjectConfirmation subConf : subConfs) {
+				subConf.getSubjectConfirmationData().setInResponseTo(requestID);
+			}
+			// add the Attribute elements specified in targetSP.json to the Assertion
+			addTargetSPAttributes(assertion);
+			// sign the assertion
+			SAMLUtil.sign(assertion, getX509Credentials(null));
+			// set the Destination attribute that is required on signed Response messages
+			response.setDestination(
+					SPTestRunner
+					.getSPConfig()
+					.getApplicableACS(SAMLUtil.fromXML(SPTestRunner.getAuthnRequest()))
+					.getAttributes()
+					.getNamedItem(MD.LOCATION)
+					.getNodeValue());
+			// set the InResponseTo attribute on the Response element as required on SP-initated login attempts
+			response.setInResponseTo(requestID);
+			// sign the Response element
+			SAMLUtil.sign(response, getX509Credentials(null));
+			// complete the login attempt 
+			Boolean loginValidSigResponse = SPTestRunner.completeLoginAttempt(browser, SAMLUtil.toXML(response));
+			// make sure a valid login attempt will succeed before continuing the test case
+			if (loginValidSigResponse) {
+				resultMessage = "The Service Provider allows login with a signed Response message";
+				return TestStatus.OK;
+			}
+			else{
+				resultMessage = "The Service Provider does not allow login with a signed Response message";
+				return TestStatus.ERROR;
+			}
+		}
+		*
+		*/
 	}
 }
