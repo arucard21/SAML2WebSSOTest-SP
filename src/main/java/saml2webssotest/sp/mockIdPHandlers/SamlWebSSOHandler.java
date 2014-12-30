@@ -40,14 +40,14 @@ public class SamlWebSSOHandler extends AbstractHandler{
         	String reqParam = request.getParameter(SAMLmisc.URLPARAM_SAMLREQUEST_REDIRECT);
         	
             if (reqParam != null) {
-            	SPTestRunner.setSamlRequestBinding(SAMLmisc.BINDING_HTTP_REDIRECT);
+            	SPTestRunner.getInstance().setSamlRequestBinding(SAMLmisc.BINDING_HTTP_REDIRECT);
             	samlRequest = SAMLUtil.decodeSamlMessageForRedirect(reqParam);
-                SPTestRunner.setSamlRequest(samlRequest);
+                SPTestRunner.getInstance().setSamlRequest(samlRequest);
 
                 logger.debug("SAML Request received through GET by the mock IdP");
             }
             else if (request.getParameter(SAMLmisc.URLPARAM_SAMLARTIFACT) != null){
-            	SPTestRunner.setSamlRequestBinding(SAMLmisc.BINDING_HTTP_ARTIFACT);
+            	SPTestRunner.getInstance().setSamlRequestBinding(SAMLmisc.BINDING_HTTP_ARTIFACT);
                 // TODO: implement for BINDING_HTTP_ARTIFACT
             }
             else{
@@ -59,15 +59,15 @@ public class SamlWebSSOHandler extends AbstractHandler{
         	String reqParam = request.getParameter(SAMLmisc.URLPARAM_SAMLREQUEST_POST);
             
             if (reqParam != null){
-            	SPTestRunner.setSamlRequestBinding(SAMLmisc.BINDING_HTTP_POST);
+            	SPTestRunner.getInstance().setSamlRequestBinding(SAMLmisc.BINDING_HTTP_POST);
             	samlRequest = SAMLUtil.decodeSamlMessageForPost(reqParam);
-            	SPTestRunner.setSamlRequest(samlRequest);
+            	SPTestRunner.getInstance().setSamlRequest(samlRequest);
 
             	logger.debug("SAML Request received through POST by the mock IdP");
             		
             }
             else if (request.getParameter(SAMLmisc.URLPARAM_SAMLARTIFACT) != null){
-            	SPTestRunner.setSamlRequestBinding(SAMLmisc.BINDING_HTTP_ARTIFACT);
+            	SPTestRunner.getInstance().setSamlRequestBinding(SAMLmisc.BINDING_HTTP_ARTIFACT);
                 // TODO: implement for BINDING_HTTP_ARTIFACT
             }
             else{

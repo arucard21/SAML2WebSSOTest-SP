@@ -90,14 +90,6 @@ You can then create the test cases. Each test case must be created as an inner c
 - `RequestTestCase`: this type of test case can be used to test the SAML Authentication Request XML that was sent by the target SP. You can do this by implementing the `checkRequest(Document)` method, which supplies the Authentication Request, as received by the mock IdP, so you can check all aspects of it.
 - `LoginTestCase`: this type of test case can be used to test if you can successfully log in to the target SP with different types of SAML Responses returned by the mock IdP. You can do this by implementing the `checkLoginResults()` method where you can initiate a login attempt, specify the Response that the mock IdP should return, then complete the login attempt and check its result. More detailed information can be found in the source documentation or you can look in the SAML2Int test suite 
 
-Each TestCase should ultimately return a TestStatus, which is an enum of the following values: UNKNOWN, INFORMATION, OK, WARNING, ERROR, CRITICAL.
-They should be used as follows:
-
-- `INFORMATION`: This status level is used when nothing can be said about the status of the test. It allows you to return a neutral status, which might sometimes be required.
-- `OK`: This status level is used when the test is successful.
-- `WARNING`: This status level is used when a test failed, but the failure does not mean non-compliance with the specification. This occurs when testing the recommendations of a specification instead of its requirements.
-- `ERROR`: This status level is used when a test failed and its failure indicates non-compliance with the specification.
-
-The values `UNKNOWN` and `CRITICAL` should not be used in the test cases. UNKNOWN is a fallback status, which should never be used, and CRITICAL is used to show that the test itself failed, whenever possible (exceptions can and most likely will still be thrown)
-
-You can also set the result message that should be returned by the test case. You can set this right before you return a TestStatus, so the message can closely match the result and, optionally, provide more detailed information about the test result. 
+Each TestCase should ultimately return true or false, meaning PASS or FAIL respectively.
+Each TestCase can also specify if the functionality it tests is mandatory or not. This is only used in reporting the results, so you can give an indication of how well the SAML entity complies with your specification.
+You can also set the result message that should be returned by the test case. You can set this right before you return the test result, so the message can closely match the result and, optionally, provide more detailed information about the test result. 

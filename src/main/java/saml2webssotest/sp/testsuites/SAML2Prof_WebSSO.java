@@ -29,7 +29,6 @@ import com.gargoylesoftware.htmlunit.WebClient;
 import com.gargoylesoftware.htmlunit.html.HtmlPage;
 
 import saml2webssotest.common.SAMLUtil;
-import saml2webssotest.common.TestStatus;
 import saml2webssotest.common.standardNames.CipherSuiteNames;
 import saml2webssotest.common.standardNames.MD;
 import saml2webssotest.common.standardNames.SAML;
@@ -68,7 +67,12 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 		}
 
 		@Override
-		public TestStatus checkConfig(SPConfiguration config) {
+		public boolean isMandatory() {
+			return false;
+		}
+
+		@Override
+		public boolean checkConfig(SPConfiguration config) {
 			// retrieve the default ACS location
 			String acsLoc = config.getApplicableACS(null).getAttributes().getNamedItem(MD.LOCATION).getNodeValue();
 			// access the default ACS location and check if it uses SSL 3.0 or TLS 1.0
@@ -77,10 +81,11 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 				// check if the URL uses the HTTPS protocol
 				if (!acsURL.getProtocol().equalsIgnoreCase("https")) {
 					resultMessage = "The Service Provider's AssertionConsumerService is not made available over HTTPS";
-					return TestStatus.ERROR;
+					return false;
 				}
 				
-				// Create a trust manager that does not validate certificate chains
+				// Create a trust manager that does not validate certificate chains since we don't care 
+				// about certificate validy but about the used protocol
 				TrustManager[] trustAllCerts = new TrustManager[] { 
 				    new X509TrustManager() {
 						
@@ -115,23 +120,23 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 				if (cipher.startsWith("TLS_")) {
 					// accept all TLS ciphers
 					resultMessage = "The Service Provider's AssertionConsumerService uses TLS 1.x";
-					return TestStatus.OK;
+					return true;
 				} else if (CipherSuiteNames.sslv3.contains(cipher)) {
 					// cipher is part of SSLv3 protocol
 					resultMessage = "The Service Provider's AssertionConsumerService uses SSL 3.0";
-					return TestStatus.OK;
+					return true;
 				} else {
 					resultMessage = "The Service Provider's AssertionConsumerService uses neither SSL 3.0 nor TLS 1.x";
-					return TestStatus.ERROR;
+					return false;
 				}
 			} catch (MalformedURLException e) {
 				logger.error("The AssertionConsumerService location from the target SP's metadata is malformed");
 				logger.debug("", e);
-				return TestStatus.CRITICAL;
+				return false;
 			} catch (IOException e) {
 				logger.error("Could not access the AssertionConsumerService location");
 				logger.debug("", e);
-				return TestStatus.CRITICAL;
+				return false;
 			}
 
 		}
@@ -160,15 +165,20 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 		}
 
 		@Override
-		public TestStatus checkRequest(String request, String binding) {
+		public boolean isMandatory() {
+			return true;
+		}
+
+		@Override
+		public boolean checkRequest(String request, String binding) {
 			NodeList issuers = SAMLUtil.fromXML(request).getElementsByTagNameNS(SAML.NAMESPACE, SAML.ISSUER);
 			// check if an issuer was found
 			if (issuers.getLength() > 0) {
 				resultMessage = "The Service Provider's Authentication Requests contains an Issuer";
-				return TestStatus.OK;
+				return true;
 			} else {
 				resultMessage = "The Service Provider's Authentication Requests did not contain an Issuer";
-				return TestStatus.ERROR;
+				return false;
 			}
 		}
 	}
@@ -197,24 +207,29 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 		}
 
 		@Override
-		public TestStatus checkRequest(String request, String binding) {
+		public boolean isMandatory() {
+			return true;
+		}
+
+		@Override
+		public boolean checkRequest(String request, String binding) {
 			NodeList issuers = SAMLUtil.fromXML(request).getElementsByTagNameNS(SAML.NAMESPACE, SAML.ISSUER);
 			// check if an issuer was found
 			if (issuers.getLength() == 0) {
 				resultMessage = "The Service Provider's Authentication Requests did not contain an Issuer";
-				return TestStatus.CRITICAL;
+				return false;
 			}
 			// check if all issuers (should only be 1) have the SP's Entity ID
 			// as its value
 			for (int i = 0; i < issuers.getLength(); i++) {
 				Node issue = issuers.item(i);
-				if (!issue.getTextContent().equalsIgnoreCase(SPTestRunner.getSPConfig().getMDAttribute(MD.ENTITYDESCRIPTOR, MD.ENTITYID))) {
+				if (!issue.getTextContent().equalsIgnoreCase(SPTestRunner.getInstance().getSPConfig().getMDAttribute(MD.ENTITYDESCRIPTOR, MD.ENTITYID))) {
 					resultMessage = "The Service Provider's Authentication Requests contained an Issuer that did not contain the SP's Entity ID";
-					return TestStatus.ERROR;
+					return false;
 				}
 			}
 			resultMessage = "The Service Provider's Authentication Requests contains only Issuer elements containing the SP's unique identifier (Entity ID)";
-			return TestStatus.OK;
+			return true;
 		}
 	}
 
@@ -243,12 +258,17 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 		}
 
 		@Override
-		public TestStatus checkRequest(String request, String binding) {
+		public boolean isMandatory() {
+			return true;
+		}
+
+		@Override
+		public boolean checkRequest(String request, String binding) {
 			NodeList issuers = SAMLUtil.fromXML(request).getElementsByTagNameNS(SAML.NAMESPACE, SAML.ISSUER);
 			// check if the issuer was found
 			if (issuers.getLength() == 0) {
 				resultMessage = "The Service Provider's Authentication Requests did not contain an Issuer";
-				return TestStatus.CRITICAL;
+				return false;
 			}
 			// check if the issuer(s) has the SP's Entity ID as its value
 			for (int i = 0; i < issuers.getLength(); i++) {
@@ -256,11 +276,11 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 				Node format = issue.getAttributes().getNamedItem(SAMLmisc.FORMAT);
 				if (format != null && !format.getNodeValue().equalsIgnoreCase(SAMLmisc.NAMEID_FORMAT_ENTITY)) {
 					resultMessage = "The Service Provider's Authentication Request contains an Issuer with an invalid Format attribute";
-					return TestStatus.ERROR;
+					return false;
 				}
 			}
 			resultMessage = "The Service Provider's Authentication Requests contains only Issuer elements with a valid or omitted Format attribute";
-			return TestStatus.OK;
+			return true;
 		}
 	}
 
@@ -290,21 +310,26 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 		}
 
 		@Override
-		public TestStatus checkRequest(String request, String binding) {
+		public boolean isMandatory() {
+			return true;
+		}
+
+		@Override
+		public boolean checkRequest(String request, String binding) {
 			// check if the request contains any Subject element
 			NodeList subjects = SAMLUtil.fromXML(request).getElementsByTagNameNS(SAML.NAMESPACE, SAML.SUBJECT);
 			if (subjects.getLength() == 0) {
 				resultMessage = "The Service Provider's Authentication Requests did not contain any Subject elements";
-				return TestStatus.OK;
+				return true;
 			}
 			// check if the request contains any Subject element
 			NodeList subjectconfs = SAMLUtil.fromXML(request).getElementsByTagNameNS(SAML.NAMESPACE, SAML.SUBJECTCONFIRMATION);
 			if (subjectconfs.getLength() == 0) {
 				resultMessage = "The Service Provider's Authentication Requests contained only Subject elements without any SubjectConfirmation elements";
-				return TestStatus.OK;
+				return true;
 			} else {
 				resultMessage = "The Service Provider's Authentication Requests contained Subject elements as well as SubjectConfirmation elements";
-				return TestStatus.ERROR;
+				return false;
 			}
 		}
 	}
@@ -339,9 +364,14 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 		}
 
 		@Override
-		public TestStatus checkLogin() {
+		public boolean isMandatory() {
+			return true;
+		}
+
+		@Override
+		public boolean checkLogin() {
 			// get a browser to test in
-			WebClient browser = SPTestRunner.getNewBrowser();
+			WebClient browser = SPTestRunner.getInstance().getNewBrowser();
 			// define the variables that can be used to store the components of the Response messages
 			String requestID;
 			Response response;
@@ -351,9 +381,9 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			Node acs;
 			
 			// initiate the login attempt at the target SP
-			acs = SPTestRunner.initiateLoginAttempt(browser, true);
+			acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, true);
 			// retrieve the ID of the AuthnRequest
-			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getAuthnRequest());
+			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getInstance().getAuthnRequest());
 			// create the minimally required (by the SAML Web SSO profile) Response 
 			response = createMinimalWebSSOResponse();
 			// get all Assertion elements from the Response
@@ -378,8 +408,9 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			// set the Destination attribute that is required on signed Response messages
 			response.setDestination(
 					SPTestRunner
+					.getInstance()
 					.getSPConfig()
-					.getApplicableACS(SAMLUtil.fromXML(SPTestRunner.getAuthnRequest()))
+					.getApplicableACS(SAMLUtil.fromXML(SPTestRunner.getInstance().getAuthnRequest()))
 					.getAttributes()
 					.getNamedItem(MD.LOCATION)
 					.getNodeValue());
@@ -388,18 +419,18 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			// sign the Response element
 			SAMLUtil.sign(response, getX509Credentials(null));
 			// complete the login attempt 
-			Boolean loginValidSigResponse = SPTestRunner.completeLoginAttempt(browser, acs, SAMLUtil.toXML(response));
+			Boolean loginValidSigResponse = SPTestRunner.getInstance().completeLoginAttempt(browser, acs, SAMLUtil.toXML(response));
 			// make sure a valid login attempt will succeed before continuing the test case
 			if (loginValidSigResponse == null) {
 				resultMessage = "The login attempt could not be completed";
-				return TestStatus.CRITICAL;
+				return false;
 			} else if (!loginValidSigResponse) {
 				resultMessage = "The Service Provider does not allow login with a correctly signed Response message";
-				return TestStatus.ERROR;
+				return false;
 			}
 			logger.debug("The Service Provider allows logins with a correctly signed Response message");
 			// reset the browser so you don't remember any login information 
-			browser = SPTestRunner.getNewBrowser();
+			browser = SPTestRunner.getInstance().getNewBrowser();
 			// reset the Response variables so you don't accidentally re-use old data
 			requestID = null;
 			response = null;
@@ -408,8 +439,8 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			subConfs = null;
 			acs = null;
 
-			acs = SPTestRunner.initiateLoginAttempt(browser, true);
-			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getAuthnRequest());
+			acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, true);
+			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getInstance().getAuthnRequest());
 			response = createMinimalWebSSOResponse();
 			assertions = response.getAssertions();
 			assertion = assertions.get(0);
@@ -424,7 +455,7 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			 * Note that the invalid signature is the following Base64-encoded string:
 			 * "This is the invalid signature that will be encoded in Base64 and will replace the valid signature"
 			 */
-			Boolean loginInvalidSigAssertion = SPTestRunner.completeLoginAttempt(browser, acs,
+			Boolean loginInvalidSigAssertion = SPTestRunner.getInstance().completeLoginAttempt(browser, acs,
 					SAMLUtil
 					.toXML(response)
 					.replaceAll(
@@ -432,15 +463,15 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 							"SignatureValue>VGhpcyBpcyB0aGUgaW52YWxpZCBzaWduYXR1cmUgdGhhdCB3aWxsIGJlIGVuY29kZWQgaW4gQmFzZTY0IGFuZCB3aWxsIHJlcGxhY2UgdGhlIHZhbGlkIHNpZ25hdHVyZQ==</"));			
 			logger.debug("Finished testing with a Response that has an invalid signature in the Assertion");
 
-			browser = SPTestRunner.getNewBrowser();
+			browser = SPTestRunner.getInstance().getNewBrowser();
 			requestID = null;
 			response = null;
 			assertions = null;
 			assertion = null;
 			subConfs = null;
 			
-			acs = SPTestRunner.initiateLoginAttempt(browser, true);
-			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getAuthnRequest());
+			acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, true);
+			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getInstance().getAuthnRequest());
 			response = createMinimalWebSSOResponse();
 			assertions = response.getAssertions();
 			if (assertions.size() > 1) {
@@ -454,8 +485,9 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			addTargetSPAttributes(assertion);
 			response.setDestination(
 					SPTestRunner
+					.getInstance()
 					.getSPConfig()
-					.getApplicableACS(SAMLUtil.fromXML(SPTestRunner.getAuthnRequest()))
+					.getApplicableACS(SAMLUtil.fromXML(SPTestRunner.getInstance().getAuthnRequest()))
 					.getAttributes()
 					.getNamedItem(MD.LOCATION)
 					.getNodeValue());
@@ -465,7 +497,7 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			 * Note that the invalid signature is the following Base64-encoded string:
 			 * "This is the invalid signature that will be encoded in Base64 and will replace the valid signature"
 			 */
-			Boolean loginInvalidSigResponse = SPTestRunner.completeLoginAttempt(browser, acs,
+			Boolean loginInvalidSigResponse = SPTestRunner.getInstance().completeLoginAttempt(browser, acs,
 					SAMLUtil
 					.toXML(response)
 					.replaceAll(
@@ -476,22 +508,22 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			// check the result of the login attempts with invalid signatures
 			if (loginInvalidSigAssertion == null || loginInvalidSigResponse == null) {
 				resultMessage = "The login attempt could not be completed";
-				return TestStatus.CRITICAL;
+				return false;
 			} else if (loginInvalidSigAssertion) {
 				if (loginInvalidSigResponse) {
 					resultMessage = "The Service Provider did not check the signatures on either the Assertions or the Response";
-					return TestStatus.ERROR;
+					return false;
 				} else {
 					resultMessage = "The Service Provider did not check the Assertion signature";
-					return TestStatus.ERROR;
+					return false;
 				}
 			} else {
 				if (loginInvalidSigResponse) {
 					resultMessage = "The Service Provider did not check the Response signature";
-					return TestStatus.ERROR;
+					return false;
 				} else {
 					resultMessage = "The Service Provider checked the signatures on both the Assertions and the Response";
-					return TestStatus.OK;
+					return true;
 				}
 			}
 		}
@@ -526,9 +558,14 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 		}
 
 		@Override
-		public TestStatus checkLogin() {
+		public boolean isMandatory() {
+			return true;
+		}
+
+		@Override
+		public boolean checkLogin() {
 			// get a browser to test in
-			WebClient browser = SPTestRunner.getNewBrowser();
+			WebClient browser = SPTestRunner.getInstance().getNewBrowser();
 			// define the variables that can be used to store the components of the Response messages
 			String requestID;
 			Response response;
@@ -539,8 +576,8 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			/**
 			 * Check if the target SP also allows a login attempt if the Recipient does match the ACS URL on which it was delivered
 			 */
-			acs = SPTestRunner.initiateLoginAttempt(browser, true);
-			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getAuthnRequest());
+			acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, true);
+			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getInstance().getAuthnRequest());
 			response = createMinimalWebSSOResponse();
 			assertions = response.getAssertions();
 			assertion = assertions.get(0);
@@ -551,22 +588,22 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			addTargetSPAttributes(assertion);
 			SAMLUtil.sign(assertion, getX509Credentials(null));
 			response.setInResponseTo(requestID);
-			Boolean loginValidRecipient = SPTestRunner.completeLoginAttempt(browser, acs, SAMLUtil.toXML(response));
+			Boolean loginValidRecipient = SPTestRunner.getInstance().completeLoginAttempt(browser, acs, SAMLUtil.toXML(response));
 
 			if (loginValidRecipient == null) {
 				logger.debug("The login attempt could not be completed");
-				return TestStatus.CRITICAL;
+				return false;
 			}
 			else if (!loginValidRecipient) {
 				resultMessage = "The Service Provider did not allow login with a valid Recipient in the Response message";
-				return TestStatus.ERROR;
+				return false;
 			}
 			logger.debug("The Service Provider allowed login with a valid Recipient in the Response message");
 			
 			/**
 			 * Check if the target SP rejects a login attempt when the Recipient does not match the ACS URL on which it was delivered
 			 */
-			browser = SPTestRunner.getNewBrowser();
+			browser = SPTestRunner.getInstance().getNewBrowser();
 			requestID = null;
 			response = null;
 			assertions = null;
@@ -574,8 +611,8 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			subConfs = null;
 			acs = null;
 			
-			acs = SPTestRunner.initiateLoginAttempt(browser, true);
-			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getAuthnRequest());
+			acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, true);
+			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getInstance().getAuthnRequest());
 			response = createMinimalWebSSOResponse();
 			assertions = response.getAssertions();
 			assertion = assertions.get(0);
@@ -589,19 +626,19 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			addTargetSPAttributes(assertion);
 			SAMLUtil.sign(assertion, getX509Credentials(null));
 			response.setInResponseTo(requestID);
-			Boolean loginInvalidRecipient = SPTestRunner.completeLoginAttempt(browser, acs, SAMLUtil.toXML(response));
+			Boolean loginInvalidRecipient = SPTestRunner.getInstance().completeLoginAttempt(browser, acs, SAMLUtil.toXML(response));
 
 			if (loginInvalidRecipient == null) {
 				resultMessage = "The login attempt could not be completed";
-				return TestStatus.CRITICAL;
+				return false;
 			}
 			else if (loginInvalidRecipient) {
 				resultMessage = "The Service Provider did not verify if the Recipient matches the URL on which the Response was received";
-				return TestStatus.ERROR;
+				return false;
 			}
 			else{
 				resultMessage = "The Service Provider correctly verifies if the Recipient matches the URL on which the Response was received";
-				return TestStatus.OK;
+				return true;
 			}
 		}
 	}
@@ -636,9 +673,14 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 		}
 
 		@Override
-		public TestStatus checkLogin() {
+		public boolean isMandatory() {
+			return true;
+		}
+
+		@Override
+		public boolean checkLogin() {
 			// get a browser to test in
-			WebClient browser = SPTestRunner.getNewBrowser();
+			WebClient browser = SPTestRunner.getInstance().getNewBrowser();
 			// define the variables that can be used to store the components of the Response messages
 			String requestID;
 			Response response;
@@ -651,8 +693,8 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			 * Check if the target SP allows a login attempt if the NotOnOrAfter time is valid
 			 */
 
-			acs = SPTestRunner.initiateLoginAttempt(browser, true);
-			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getAuthnRequest());
+			acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, true);
+			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getInstance().getAuthnRequest());
 			response = createMinimalWebSSOResponse();
 			assertions = response.getAssertions();
 			assertion = assertions.get(0);
@@ -663,15 +705,15 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			addTargetSPAttributes(assertion);
 			SAMLUtil.sign(assertion, getX509Credentials(null));
 			response.setInResponseTo(requestID);
-			Boolean loginValidNOOA = SPTestRunner.completeLoginAttempt(browser, acs, SAMLUtil.toXML(response));
+			Boolean loginValidNOOA = SPTestRunner.getInstance().completeLoginAttempt(browser, acs, SAMLUtil.toXML(response));
 			
 			if (loginValidNOOA == null) {
 				resultMessage = "The login attempt could not be completed";
-				return TestStatus.CRITICAL;
+				return false;
 			}
 			else if (!loginValidNOOA) {
 				resultMessage = "The Service Provider did not allow login with a valid NotOnOrAfter time in the Response message";
-				return TestStatus.ERROR;
+				return false;
 			}
 			logger.debug("The Service Provider allowed login with a valid NotOnOrAfter time in the Response message");
 
@@ -680,7 +722,7 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			 * Check if the target SP rejects a login attempt when the Recipient does not match the ACS URL on which it was delivered
 			 */
 
-			browser = SPTestRunner.getNewBrowser();
+			browser = SPTestRunner.getInstance().getNewBrowser();
 			requestID = null;
 			response = null;
 			assertions = null;
@@ -688,8 +730,8 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			subConfs = null;
 			acs = null;
 
-			acs = SPTestRunner.initiateLoginAttempt(browser, true);
-			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getAuthnRequest());
+			acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, true);
+			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getInstance().getAuthnRequest());
 			response = createMinimalWebSSOResponse();
 			assertions = response.getAssertions();
 			assertion = assertions.get(0);
@@ -704,25 +746,25 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			SAMLUtil.sign(assertion, getX509Credentials(null));
 			response.setInResponseTo(requestID);
 			// wait for the same amount of time as the clock skew on the target SP to make sure
-			// the Response can't be made valid due to that clock skew
+			// the Response can't be made valid due to that clock skew (and a second longer, just to make sure)
 			try {
-				Thread.sleep(SPTestRunner.getSPConfig().getClockSkew());
+				Thread.sleep(SPTestRunner.getInstance().getSPConfig().getClockSkew()+1000);
 			} catch (InterruptedException e) {
 				resultMessage = "The wait time intended to keep the clock skew from incorrectly causing the Response to be valid, was interrupted";
-				return TestStatus.CRITICAL;
+				return false;
 			}
-			Boolean loginInvalidNOOA = SPTestRunner.completeLoginAttempt(browser, acs, SAMLUtil.toXML(response));
+			Boolean loginInvalidNOOA = SPTestRunner.getInstance().completeLoginAttempt(browser, acs, SAMLUtil.toXML(response));
 
 			if (loginInvalidNOOA == null) {
 				resultMessage = "The login attempt could not be completed";
-				return TestStatus.CRITICAL;
+				return false;
 			}
 			if (loginInvalidNOOA) {
 				resultMessage = "The Service Provider did not verify that the NotOnOrAfter time has not passed";
-				return TestStatus.ERROR;
+				return false;
 			} else {
 				resultMessage = "The Service Provider correctly verified that the NotOnOrAfter time has not passed";
-				return TestStatus.OK;
+				return true;
 			}
 		}
 	}
@@ -757,9 +799,14 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 		}
 
 		@Override
-		public TestStatus checkLogin() {
+		public boolean isMandatory() {
+			return true;
+		}
+
+		@Override
+		public boolean checkLogin() {
 			// get a browser to test in
-			WebClient browser = SPTestRunner.getNewBrowser();
+			WebClient browser = SPTestRunner.getInstance().getNewBrowser();
 			// define the variables that can be used to store the components of the Response messages
 			String requestID;
 			Response response;
@@ -772,8 +819,8 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			 * Check if the target SP allows a login attempt if the InResponseTo attribute is valid
 			 */
 
-			acs = SPTestRunner.initiateLoginAttempt(browser, true);
-			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getAuthnRequest());
+			acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, true);
+			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getInstance().getAuthnRequest());
 			response = createMinimalWebSSOResponse();
 			assertions = response.getAssertions();
 			assertion = assertions.get(0);
@@ -784,15 +831,15 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			addTargetSPAttributes(assertion);
 			SAMLUtil.sign(assertion, getX509Credentials(null));
 			response.setInResponseTo(requestID);
-			Boolean loginValidIRT = SPTestRunner.completeLoginAttempt(browser, acs, SAMLUtil.toXML(response));
+			Boolean loginValidIRT = SPTestRunner.getInstance().completeLoginAttempt(browser, acs, SAMLUtil.toXML(response));
 
 			if (loginValidIRT == null) {
 				resultMessage = "The login attempt could not be completed";
-				return TestStatus.CRITICAL;
+				return false;
 			}
 			else if (!loginValidIRT) {
 				resultMessage = "The Service Provider did not allow login with a valid InResponseTo attribute in the Response message";
-				return TestStatus.ERROR;
+				return false;
 			}
 			logger.debug("The Service Provider allowed login with a valid InResponseTo attribute in the Response message");
 
@@ -800,7 +847,7 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			 * Check if the target SP rejects a login attempt when the InResponseTo attribute is invalid in SubjectConfirmationData
 			 */
 
-			browser = SPTestRunner.getNewBrowser();
+			browser = SPTestRunner.getInstance().getNewBrowser();
 			requestID = null;
 			response = null;
 			assertions = null;
@@ -808,8 +855,8 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			subConfs = null;
 			acs = null;
 
-			acs = SPTestRunner.initiateLoginAttempt(browser, true);
-			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getAuthnRequest());
+			acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, true);
+			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getInstance().getAuthnRequest());
 			response = createMinimalWebSSOResponse();
 			assertions = response.getAssertions();
 			assertion = assertions.get(0);
@@ -821,13 +868,13 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			addTargetSPAttributes(assertion);
 			SAMLUtil.sign(assertion, getX509Credentials(null));
 			response.setInResponseTo(requestID);
-			Boolean loginInvalidIRTSubConfData = SPTestRunner.completeLoginAttempt(browser, acs, SAMLUtil.toXML(response));
+			Boolean loginInvalidIRTSubConfData = SPTestRunner.getInstance().completeLoginAttempt(browser, acs, SAMLUtil.toXML(response));
 			
 			/**
 			 * Check if the target SP rejects a login attempt when the InResponseTo attribute is invalid in Response
 			 */
 
-			browser = SPTestRunner.getNewBrowser();
+			browser = SPTestRunner.getInstance().getNewBrowser();
 			requestID = null;
 			response = null;
 			assertions = null;
@@ -835,8 +882,8 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			subConfs = null;
 			acs = null;
 
-			acs = SPTestRunner.initiateLoginAttempt(browser, true);
-			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getAuthnRequest());
+			acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, true);
+			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getInstance().getAuthnRequest());
 			response = createMinimalWebSSOResponse();
 			assertions = response.getAssertions();
 			assertion = assertions.get(0);
@@ -848,26 +895,26 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			addTargetSPAttributes(assertion);
 			SAMLUtil.sign(assertion, getX509Credentials(null));
 			response.setInResponseTo(requestID + "_");
-			Boolean loginInvalidIRTResponse = SPTestRunner.completeLoginAttempt(browser, acs, SAMLUtil.toXML(response));
+			Boolean loginInvalidIRTResponse = SPTestRunner.getInstance().completeLoginAttempt(browser, acs, SAMLUtil.toXML(response));
 
 			if (loginInvalidIRTSubConfData == null || loginInvalidIRTResponse == null) {
 				resultMessage = "The login attempt could not be completed";
-				return TestStatus.CRITICAL;
+				return false;
 			} else if (loginInvalidIRTSubConfData) {
 				if (loginInvalidIRTResponse) {
 					resultMessage = "The Service Provider did not verify that the InResponseTo ID on either the SubjectConfirmationData or the Response matches the ID from the AuthnRequest";
-					return TestStatus.ERROR;
+					return false;
 				} else {
 					resultMessage = "The Service Provider did not verify that the InResponseTo ID on the SubjectConfirmationData matches the ID from the AuthnRequest";
-					return TestStatus.ERROR;
+					return false;
 				}
 			} else {
 				if (loginInvalidIRTResponse) {
 					resultMessage = "The Service Provider did not verify that the InResponseTo ID on the Response matches the ID from the AuthnRequest";
-					return TestStatus.ERROR;
+					return false;
 				} else {
 					resultMessage = "The Service Provider verifed that the InResponseTo ID on both the SubjectConfirmationData and the Response matches the ID from the AuthnRequest";
-					return TestStatus.OK;
+					return true;
 				}
 			}
 		}
@@ -902,9 +949,14 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 		}
 
 		@Override
-		public TestStatus checkLogin() {
+		public boolean isMandatory() {
+			return true;
+		}
+
+		@Override
+		public boolean checkLogin() {
 			// get a browser to test in
-			WebClient browser = SPTestRunner.getNewBrowser();
+			WebClient browser = SPTestRunner.getInstance().getNewBrowser();
 			// define the variables that can be used to store the components of the Response messages
 			Response response;
 			List<Assertion> assertions;
@@ -914,7 +966,7 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			/**
 			 * Try to log in with an unsolicited Response without the InResponseTo attribute present
 			 */
-			acs = SPTestRunner.initiateLoginAttempt(browser, false);
+			acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, false);
 			response = createMinimalWebSSOResponse();
 			assertions = response.getAssertions();
 			if (assertions.size() > 1) {
@@ -923,29 +975,29 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			assertion = assertions.get(0);
 			addTargetSPAttributes(assertion);
 			SAMLUtil.sign(assertion, getX509Credentials(null));
-			Boolean loginValidIRTIdP = SPTestRunner.completeLoginAttempt(browser, acs, SAMLUtil.toXML(response));
+			Boolean loginValidIRTIdP = SPTestRunner.getInstance().completeLoginAttempt(browser, acs, SAMLUtil.toXML(response));
 
 			if (loginValidIRTIdP == null) {
 				resultMessage = "The IdP-initiated login attempt could not be completed";
-				return TestStatus.CRITICAL;
+				return false;
 			}
 			else if (!loginValidIRTIdP) {
 				resultMessage = "The Service Provider did not allow login with an unsolicited Response message without an InResponseTo attribute";
-				return TestStatus.ERROR;
+				return false;
 			}
 			
 			/**
 			 * Try to log in with an unsolicited Response with an empty InResponseTo attribute present
 			 */
 
-			browser = SPTestRunner.getNewBrowser();
+			browser = SPTestRunner.getInstance().getNewBrowser();
 			response = null;
 			assertions = null;
 			assertion = null;
 			subConfs = null;
 			acs = null;
 			
-			acs = SPTestRunner.initiateLoginAttempt(browser, false);
+			acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, false);
 			response = createMinimalWebSSOResponse();
 			assertions = response.getAssertions();
 			assertion = assertions.get(0);
@@ -956,19 +1008,19 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			addTargetSPAttributes(assertion);
 			SAMLUtil.sign(assertion, getX509Credentials(null));
 			response.setInResponseTo("");
-			Boolean loginInvalidIRTIdP = SPTestRunner.completeLoginAttempt(browser, acs, SAMLUtil.toXML(response));
+			Boolean loginInvalidIRTIdP = SPTestRunner.getInstance().completeLoginAttempt(browser, acs, SAMLUtil.toXML(response));
 
 			if (loginInvalidIRTIdP == null) {
 				logger.debug("The login attempt could not be completed");
-				return TestStatus.CRITICAL;
+				return false;
 			}
 			else if (loginInvalidIRTIdP) {
 				resultMessage = "The Service Provider correctly verified that the InResponseTo attribute is not present on IdP-initiated logins";
-				return TestStatus.OK;
+				return true;
 			}
 			else {
 				resultMessage = "The Service Provider could not perform an IdP-initiated login";
-				return TestStatus.CRITICAL;
+				return false;
 			}
 		}
 	}
@@ -1000,9 +1052,14 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 		}
 	
 		@Override
-		public TestStatus checkLogin() {
+		public boolean isMandatory() {
+			return true;
+		}
+
+		@Override
+		public boolean checkLogin() {
 			// get a browser to test in
-			WebClient browser = SPTestRunner.getNewBrowser();
+			WebClient browser = SPTestRunner.getInstance().getNewBrowser();
 			// define the variables that can be used to store the components of the Response messages
 			String requestID;
 			Response response;
@@ -1011,8 +1068,8 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			List<SubjectConfirmation> subConfs;
 			Node acs;
 	
-			acs = SPTestRunner.initiateLoginAttempt(browser, true);
-			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getAuthnRequest());
+			acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, true);
+			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getInstance().getAuthnRequest());
 			response = createMinimalWebSSOResponse();
 			assertions = response.getAssertions();
 			assertion = assertions.get(0);
@@ -1029,15 +1086,15 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			addTargetSPAttributes(assertion);
 			SAMLUtil.sign(assertion, getX509Credentials(null));
 			response.setInResponseTo(requestID);
-			Boolean loginSessionValidity = SPTestRunner.completeLoginAttempt(browser, acs, SAMLUtil.toXML(response));
+			Boolean loginSessionValidity = SPTestRunner.getInstance().completeLoginAttempt(browser, acs, SAMLUtil.toXML(response));
 	
 			if (loginSessionValidity == null){
 				resultMessage = "The login attempt could not be completed";
-				return TestStatus.CRITICAL;
+				return false;
 			}
 			else if (!loginSessionValidity) {
 				resultMessage = "The Service Provider's session's validity could not be verified because the login failed";
-				return TestStatus.CRITICAL;
+				return false;
 			}
 	
 			/**
@@ -1049,36 +1106,36 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 				// refresh the page
 				curPage.refresh();
 				// check if you're still logged in and wait until the session is invalid
-				if (!SPTestRunner.checkLoginContent(curPage) || !SPTestRunner.checkLoginCookies(browser.getCookies(curPage.getUrl()))
-						|| !SPTestRunner.checkLoginHTTPStatusCode(curPage) || !SPTestRunner.checkLoginURL(curPage)) {
+				if (!SPTestRunner.getInstance().checkLoginContent(curPage) || !SPTestRunner.getInstance().checkLoginCookies(browser.getCookies(curPage.getUrl()))
+						|| !SPTestRunner.getInstance().checkLoginHTTPStatusCode(curPage) || !SPTestRunner.getInstance().checkLoginURL(curPage)) {
 					resultMessage = "The Service Provider loses its login status after a refresh which should not happen";
-					return TestStatus.ERROR;
+					return false;
 				}
 				// wait till the session is no longer valid
-				Thread.sleep(SPTestRunner.getSPConfig().getClockSkew() + 1000);
+				Thread.sleep(SPTestRunner.getInstance().getSPConfig().getClockSkew() + 2000);
 				// refresh the page and check if you're still logged in
 				curPage.refresh();
 				// check if you're still logged in
-				if (SPTestRunner.checkLoginContent(curPage) && SPTestRunner.checkLoginCookies(browser.getCookies(curPage.getUrl()))
-						&& SPTestRunner.checkLoginHTTPStatusCode(curPage) && SPTestRunner.checkLoginURL(curPage)) {
+				if (SPTestRunner.getInstance().checkLoginContent(curPage) && SPTestRunner.getInstance().checkLoginCookies(browser.getCookies(curPage.getUrl()))
+						&& SPTestRunner.getInstance().checkLoginHTTPStatusCode(curPage) && SPTestRunner.getInstance().checkLoginURL(curPage)) {
 					resultMessage = "The Service Provider does not correctly discard the security context when a SessionNotOnOrAfter is provided ";
-					return TestStatus.ERROR;
+					return false;
 				} else {
 					resultMessage = "The Service Provider correctly discards the security context when a SessionNotOnOrAfter is provided ";
-					return TestStatus.OK;
+					return true;
 				}
 			} catch (FailingHttpStatusCodeException e) {
 				resultMessage = "Could not retrieve browser page for the LoginTestCase";
-				return TestStatus.CRITICAL;
+				return false;
 			} catch (MalformedURLException e) {
 				resultMessage = "The URL for the start page was malformed";
-				return TestStatus.CRITICAL;
+				return false;
 			} catch (IOException e) {
 				resultMessage = "An I/O exception occurred while trying to access the start page";
-				return TestStatus.CRITICAL;
+				return false;
 			} catch (InterruptedException e) {
 				resultMessage = "The wait time intended to make the session invalid, was interrupted";
-				return TestStatus.CRITICAL;
+				return false;
 			}
 		}
 	}
@@ -1108,11 +1165,14 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 		}
 
 		@Override
-		public TestStatus checkLogin() {
-			// TODO: This one still fails on TD55, maybe something to do with the linkinteraction, got tried 3 times and log is totally full (loop maybe)
-			
+		public boolean isMandatory() {
+			return true;
+		}
+
+		@Override
+		public boolean checkLogin() {
 			// get a browser to test in
-			WebClient browser = SPTestRunner.getNewBrowser();
+			WebClient browser = SPTestRunner.getInstance().getNewBrowser();
 			// define the variables that can be used to store the components of the Response messages
 			String requestID;
 			Response response;
@@ -1121,8 +1181,8 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			List<SubjectConfirmation> subConfs;
 			Node acs;
 
-			acs = SPTestRunner.initiateLoginAttempt(browser, true);
-			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getAuthnRequest());
+			acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, true);
+			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getInstance().getAuthnRequest());
 			response = createMinimalWebSSOResponse();
 			assertions = response.getAssertions();
 			assertion = assertions.get(0);
@@ -1135,18 +1195,18 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			SAMLUtil.sign(assertion, getX509Credentials(null));
 			response.setInResponseTo(requestID);
 			String responseBearer1 = SAMLUtil.toXML(response);
-			Boolean loginBearer1 = SPTestRunner.completeLoginAttempt(browser, acs, responseBearer1);
+			Boolean loginBearer1 = SPTestRunner.getInstance().completeLoginAttempt(browser, acs, responseBearer1);
 
 			if (loginBearer1 == null){
 				resultMessage = "The login attempt could not be completed";
-				return TestStatus.CRITICAL;
+				return false;
 			}
 			else if (!loginBearer1) {
 				resultMessage = "The test could not be run because the initial login failed";
-				return TestStatus.CRITICAL;
+				return false;
 			}
 			// create a second browser with the same options as the current browser
-			WebClient secondBrowser = SPTestRunner.getNewBrowser();
+			WebClient secondBrowser = SPTestRunner.getInstance().getNewBrowser();
 			
 			// start another login attempt in the second browser
 			response = null;
@@ -1155,8 +1215,8 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			subConfs = null;
 			acs = null;
 			
-			acs = SPTestRunner.initiateLoginAttempt(secondBrowser, true);
-			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getAuthnRequest());
+			acs = SPTestRunner.getInstance().initiateLoginAttempt(secondBrowser, true);
+			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getInstance().getAuthnRequest());
 			response = createMinimalWebSSOResponse();
 			assertions = response.getAssertions();
 			assertion = assertions.get(0);
@@ -1169,37 +1229,168 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			SAMLUtil.sign(assertion, getX509Credentials(null));
 			response.setInResponseTo(requestID);
 			String responseBearer2 = SAMLUtil.toXML(response);
-			Boolean loginBearer2 = SPTestRunner.completeLoginAttempt(secondBrowser, acs, responseBearer2);
+			Boolean loginBearer2 = SPTestRunner.getInstance().completeLoginAttempt(secondBrowser, acs, responseBearer2);
 
 			if (loginBearer2 == null){
 				resultMessage = "The login attempt could not be completed";
-				return TestStatus.CRITICAL;
+				return false;
 			}
 			else if (!loginBearer2) {
 				resultMessage = "The test could not be run because the initial login failed";
-				return TestStatus.CRITICAL;
+				return false;
 			}
 			
 			/**
 			 * Check that logging in with the same responses is not allowed
 			 */
 			
-			browser = SPTestRunner.getNewBrowser();
-			secondBrowser = SPTestRunner.getNewBrowser();
+			browser = SPTestRunner.getInstance().getNewBrowser();
+			secondBrowser = SPTestRunner.getInstance().getNewBrowser();
 			
-			acs = SPTestRunner.initiateLoginAttempt(browser, true);
-			Boolean loginBearer1Replay = SPTestRunner.completeLoginAttempt(browser, acs, responseBearer1);
-			acs = SPTestRunner.initiateLoginAttempt(secondBrowser, true);
-			Boolean loginBearer2Replay = SPTestRunner.completeLoginAttempt(secondBrowser, acs, responseBearer2);
+			acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, true);
+			Boolean loginBearer1Replay = SPTestRunner.getInstance().completeLoginAttempt(browser, acs, responseBearer1);
+			acs = SPTestRunner.getInstance().initiateLoginAttempt(secondBrowser, true);
+			Boolean loginBearer2Replay = SPTestRunner.getInstance().completeLoginAttempt(secondBrowser, acs, responseBearer2);
 			
 			if(loginBearer1Replay || loginBearer2Replay){
 				resultMessage = "The Service Provider does not ensure that bearer assertions are not replayed";
-				return TestStatus.ERROR;
+				return false;
 			}
 			else{
 				resultMessage = "The Service Provider ensures that bearer assertions are not replayed";
-				return TestStatus.ERROR;
+				return false;
 			}
 		}
 	}
+
+	/**
+	 * Tests the following part of the SAML 2.0 Web Browser SSO Profile:
+	 * 
+	 * Verify that any assertions relied upon are valid in other respects. Any assertion which is not valid, or whose subject confirmation
+	 * requirements cannot be met SHOULD be discarded and SHOULD NOT be used to establish a security context for the principal.
+	 * 
+	 * TODO: implement this
+	 * 
+	 * assertion validity based on conditions element (which is separate from the restrictions on confirming the subject of the assertion, i.e. SubjectConfirmationData)
+	 * 
+	 * conditions element validity based on:
+	 * - NotBefore -> obvious meaning
+	 * - NotOnOrAfter -> obvious meaning
+	 * - any Condition element, which can be an AudienceRestriction element -> valid if Audience element contains Entity ID of target SP
+	 * 
+	 * If all conditions are valid, assertion is valid
+	 * If any condition is invalid, assertion is invalid
+	 * If any b  n   condition validity can not be determined, the assertion is Indeterminate
+	 * 
+	 * Tested by trying to log in to the target SP with: 
+	 * 	- a Response that has one valid Assertion with AuthnStatement in it 
+	 * 		- This should log in correctly 
+	 * 	- a Response that has one Assertion that is invalid because .... 
+	 * 		- This should fail to log in
+	 * 	- a Response that has one Assertion that is invalid because .... 
+	 * 		- This should fail to log in
+	 * 	- a Response that has one Assertion that is invalid because .... 
+	 * 		- This should fail to log in
+	 * Note that the 
+	 * 
+	 * @author RiaasM
+	 */
+	/*public class LoginAssertionValidation implements LoginTestCase {
+		private String resultMessage;
+	
+		@Override
+		public String getDescription() {
+			return "Test if the Service Provider correctly verifies that the Recipient matches the URL on which the Response was received (MUST requirement)";
+		}
+	
+		@Override
+		public String getResultMessage() {
+			return resultMessage;
+		}
+	
+		@Override
+		public boolean isMandatory() {
+			return true;
+		}
+		
+		@Override
+		public boolean checkLogin() {
+			// get a browser to test in
+			WebClient browser = SPTestRunner.getNewBrowser();
+			// define the variables that can be used to store the components of the Response messages
+			String requestID;
+			Response response;
+			List<Assertion> assertions;
+			Assertion assertion;
+			List<SubjectConfirmation> subConfs;
+			Node acs;
+			*//**
+			 * Check if the target SP also allows a login attempt if the Recipient does match the ACS URL on which it was delivered
+			 *//*
+			acs = SPTestRunner.initiateLoginAttempt(browser, true);
+			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getAuthnRequest());
+			response = createMinimalWebSSOResponse();
+			assertions = response.getAssertions();
+			assertion = assertions.get(0);
+			subConfs = assertion.getSubject().getSubjectConfirmations();
+			for (SubjectConfirmation subconf : subConfs) {
+				subconf.getSubjectConfirmationData().setInResponseTo(requestID);
+			}
+			addTargetSPAttributes(assertion);
+			SAMLUtil.sign(assertion, getX509Credentials(null));
+			response.setInResponseTo(requestID);
+			Boolean loginValidRecipient = SPTestRunner.completeLoginAttempt(browser, acs, SAMLUtil.toXML(response));
+	
+			if (loginValidRecipient == null) {
+				logger.debug("The login attempt could not be completed");
+				return false;
+			}
+			else if (!loginValidRecipient) {
+				resultMessage = "The Service Provider did not allow login with a valid Recipient in the Response message";
+				return false;
+			}
+			logger.debug("The Service Provider allowed login with a valid Recipient in the Response message");
+			
+			*//**
+			 * Check if the target SP rejects a login attempt when the Recipient does not match the ACS URL on which it was delivered
+			 *//*
+			browser = SPTestRunner.getNewBrowser();
+			requestID = null;
+			response = null;
+			assertions = null;
+			assertion = null;
+			subConfs = null;
+			acs = null;
+			
+			acs = SPTestRunner.initiateLoginAttempt(browser, true);
+			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getAuthnRequest());
+			response = createMinimalWebSSOResponse();
+			assertions = response.getAssertions();
+			assertion = assertions.get(0);
+			subConfs = assertion.getSubject().getSubjectConfirmations();
+			for (SubjectConfirmation subConf : subConfs) {
+				SubjectConfirmationData subConfData = (SubjectConfirmationData) subConf.getSubjectConfirmationData();
+				subConfData.setInResponseTo(requestID);
+				// set the recipient to an invalid location (that is still a valid URL)
+				subConfData.setRecipient("http://www.topdesk.com/");
+			}
+			addTargetSPAttributes(assertion);
+			SAMLUtil.sign(assertion, getX509Credentials(null));
+			response.setInResponseTo(requestID);
+			Boolean loginInvalidRecipient = SPTestRunner.completeLoginAttempt(browser, acs, SAMLUtil.toXML(response));
+	
+			if (loginInvalidRecipient == null) {
+				resultMessage = "The login attempt could not be completed";
+				return false;
+			}
+			else if (loginInvalidRecipient) {
+				resultMessage = "The Service Provider did not verify if the Recipient matches the URL on which the Response was received";
+				return false;
+			}
+			else{
+				resultMessage = "The Service Provider correctly verifies if the Recipient matches the URL on which the Response was received";
+				return true;
+			}
+		}
+	}*/
 }

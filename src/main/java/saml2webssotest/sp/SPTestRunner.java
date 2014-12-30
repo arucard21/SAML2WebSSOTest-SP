@@ -7,20 +7,16 @@ import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.LinkedList;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.apache.commons.cli.BasicParser;
 import org.apache.commons.cli.CommandLine;
-import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Options;
-import org.apache.commons.cli.ParseException;
 import org.apache.log4j.BasicConfigurator;
 import org.apache.log4j.PropertyConfigurator;
-import org.eclipse.jetty.server.Server;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
@@ -34,6 +30,7 @@ import com.gargoylesoftware.htmlunit.html.HtmlPage;
 import com.gargoylesoftware.htmlunit.util.Cookie;
 import com.gargoylesoftware.htmlunit.util.NameValuePair;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonIOException;
 import com.google.gson.JsonSyntaxException;
 
 import saml2webssotest.common.Interaction;
@@ -41,9 +38,7 @@ import saml2webssotest.common.InteractionDeserializer;
 import saml2webssotest.common.MetadataDeserializer;
 import saml2webssotest.common.StringPair;
 import saml2webssotest.common.SAMLUtil;
-import saml2webssotest.common.TestResult;
-import saml2webssotest.common.TestRunnerUtil;
-import saml2webssotest.common.TestStatus;
+import saml2webssotest.common.TestRunner;
 import saml2webssotest.common.TestSuite.TestCase;
 import saml2webssotest.common.TestSuite.MetadataTestCase;
 import saml2webssotest.common.standardNames.MD;
@@ -61,69 +56,61 @@ import saml2webssotest.sp.testsuites.SPTestSuite.RequestTestCase;
  * @author RiaasM
  * 
  */
-public class SPTestRunner {
+public class SPTestRunner extends TestRunner {
+	private static SPTestRunner instance = null;
 	/**
 	 * Logger for this class
 	 */
-	private static final Logger logger = LoggerFactory.getLogger(SPTestRunner.class);
-	private static final String logFile = "slf4j.properties";
-	/**
-	 * The package where all test suites can be found, relative to the package containing this class.
-	 */
-	private static String testSuitesPackage = "testsuites";
+	private final Logger logger = LoggerFactory.getLogger(SPTestRunner.class);
 	/**
 	 * The test suite that is being run
 	 */
-	private static SPTestSuite testsuite;
+	private SPTestSuite testsuite;
 	/**
 	 * Contains the SP configuration
 	 */
-	private static SPConfiguration spConfig;
+	private SPConfiguration spConfig;
 	/**
 	 * Contains the SAML Request that was retrieved by the mock IdP
 	 */
-	private static String samlRequest;
+	private String samlRequest;
 	/**
 	 * Contains the SAML binding that was recognized by the mock IdP
 	 */
-	private static String samlRequestBinding;
-	/**
-	 * Contains the mock IdP server
-	 */
-	private static Server mockIdP;
+	private String samlRequestBinding;
 	/**
 	 * Contains the command-line options
 	 */
-	private static CommandLine command;
+	private CommandLine command;
+	private final String logFile = "slf4j.properties";
+	/**
+	 * The package where all test suites can be found, relative to the package containing this class.
+	 */
+	private String testSuitesPackage = "testsuites";
 
-	public static void main(String[] args) {
-		
+	private SPTestRunner(String[] args) {
 		// initialize logging with properties file if it exists, basic config otherwise
-		if(Files.exists(Paths.get(logFile))){
+		if (Files.exists(Paths.get(logFile))) {
 			PropertyConfigurator.configure(logFile);
 		}
-		else{
+		else {
 			BasicConfigurator.configure();
 		}
-		
-		// define the command-line options
-		Options options = new Options();
-		options.addOption("h", "help", false, "Print this help message");
-		options.addOption("i", "insecure", false,"Do not verify HTTPS server certificates");
-		options.addOption("c", "spconfig", true,"The name of the properties file containing the configuration of the target SP");
-		options.addOption("l", "listTestcases", false,"List all the test cases");
-		options.addOption("L", "listTestsuites", false,"List all the test suites");
-		options.addOption("m", "metadata", false,"Display the mock IdP metadata");
-		options.addOption("T", "testsuite", true,"Specifies the test suite from which you wish to run a test case");
-		options.addOption("t","testcase",true,"The name of the test case you wish to run. If omitted, all test cases from the test suite are run");
 
-		LinkedList<TestResult> testresults = new LinkedList<TestResult>();
 		try {
-			// parse the command-line arguments
-			CommandLineParser parser = new BasicParser();
+			// define the command-line options
+			Options options = new Options();
+			options.addOption("h", "help", false, "Print this help message");
+			options.addOption("i", "insecure", false,"Do not verify HTTPS server certificates");
+			options.addOption("c", "config", true,"The name of the properties file containing the configuration of the target SAML entity");
+			options.addOption("l", "listTestcases", false,"List all the test cases");
+			options.addOption("L", "listTestsuites", false,"List all the test suites");
+			options.addOption("m", "metadata", false,"Display the mock SAML entity's metadata");
+			options.addOption("T", "testsuite", true,"Specifies the test suite from which you wish to run a test case");
+			options.addOption("t","testcase",true,"The name of the test case you wish to run. If omitted, all test cases from the test suite are run");
 
 			// parse the command line arguments
-			command = parser.parse(options, args);
+			command = new BasicParser().parse(options, args);
 
 			// show the help message
 			if (command.hasOption("help")) {
@@ -133,7 +120,7 @@ public class SPTestRunner {
 
 			// list the test suites, if necessary
 			if (command.hasOption("listTestsuites")) {
-				TestRunnerUtil.listTestSuites(SPTestRunner.class.getPackage().getName() + "." + testSuitesPackage);
+				listTestSuites(SPTestRunner.class.getPackage().getName() + "." + testSuitesPackage);
 				System.exit(0);
 			}
 
@@ -147,65 +134,30 @@ public class SPTestRunner {
 
 					// list the test cases, if necessary
 					if (command.hasOption("listTestcases")) {
-						TestRunnerUtil.listTestCases(testsuite);
+						listTestCases(testsuite);
 						System.exit(0);
 					}
 
 					// show mock IdP metadata
 					if (command.hasOption("metadata")) {
-						TestRunnerUtil.outputMockedMetadata(testsuite);
+						outputMockedMetadata(testsuite);
 						System.exit(0);
 					}
 
-					
-					
 					// load target SP config
-					if (command.hasOption("spconfig")) {
-						spConfig = new GsonBuilder()
-											.registerTypeAdapter(Document.class, new MetadataDeserializer())
-											.registerTypeAdapter(Interaction.class, new InteractionDeserializer())
-											.create()
-											.fromJson(Files.newBufferedReader(Paths.get(command.getOptionValue("spconfig")),Charset.defaultCharset()), SPConfiguration.class); 
-						//new SPConfiguration(command.getOptionValue("spconfig"));
-					} else {
-						// use empty SP configuration
-						spConfig = new SPConfiguration();
+					if (command.hasOption("config")) {
+						loadConfig(command.getOptionValue("config"));
 					}
-					
+
 					// initialize the mocked server
-					mockIdP = TestRunnerUtil.newMockServer(testsuite.getMockServerURL(), new SamlWebSSOHandler());
-					// start the mock IdP
-					mockIdP.start();
+					initMockServer();
 
 					// load the requested test case(s)
 					String testcaseName = command.getOptionValue("testcase");
-					
-					// get the test case(s) we want to run
-					ArrayList<TestCase> testcases = TestRunnerUtil.getTestCases(testsuite, testcaseName);
 
-					// run the test case(s) from the test suite
-					for(TestCase testcase: testcases){
-						TestStatus status;
-						String resultMessage;
-						try{
-							status = runTest(testcase);
-							resultMessage = testcase.getResultMessage();
-						}
-						catch(Exception e){
-							// make sure any exceptions thrown while running a test are caught here
-							// so they don't cause all other tests to be cancelled
-							logger.error("An exception occurred while running test case: " + testcase.getClass().getSimpleName(), e);
-							status = TestStatus.CRITICAL;
-							resultMessage = "The following exception has occurred (See the log for the full stacktrace): " + e.toString();
-						}
-						
-						TestResult result = new TestResult(status, resultMessage);
-						result.setName(testcase.getClass().getSimpleName());
-						result.setDescription(testcase.getDescription());
-						// add this test result to the list of test results
-						testresults.add(result);
-					}
-					TestRunnerUtil.outputTestResults(testresults);
+					// get the test case(s) we want to run
+					testcases = getTestCases(testsuite, testcaseName);
+
 				} else {
 					logger.error("Provided class was not a TestSuite");
 				}
@@ -216,26 +168,61 @@ public class SPTestRunner {
 				logger.error("Test suite could not be found", e);
 			else
 				logger.error("Test case could not be found", e);
-			testresults.add(new TestResult(TestStatus.CRITICAL, ""));
+			// testresults.add(new TestResult(boolean.CRITICAL, ""));
 		} catch (ClassCastException e) {
 			logger.error("The test suite or case was not an instance of TestSuite", e);
-		} catch (IOException e) {
-			logger.error("I/O error occurred when creating HTTP server", e);
-		} catch (ParseException e) {
-			logger.error("Parsing of the command-line arguments has failed", e);
 		} catch (JsonSyntaxException jsonExc) {
 			logger.error("The JSON configuration file did not have the correct syntax", jsonExc);
 		} catch (Exception e) {
 			logger.error("The test(s) could not be run", e);
-		} finally {
-			// stop the mock IdP
+		}
+	}
+
+	public static void main(String[] args) {
+		instance = new SPTestRunner(args);
+		instance.run();
+	}
+	
+	public static SPTestRunner getInstance(){
+		if (instance == null){
+			throw new IllegalStateException("Instance not created yet");
+		}
+		return instance;
+	}
+	/**
+	 * Create the mock server, set its handlers and start the server
+	 */
+	@Override
+	public void initMockServer() {
+		mockServer = newMockServer(testsuite.getMockServerURL(), new SamlWebSSOHandler());
+		// start the mock IdP
+		try {
+			mockServer.start();
+		} catch (Exception e) {
+			logger.error("Could not start the mock server", e);
+		}		
+	}
+
+	@Override
+	public void loadConfig(String file){
+		if (file != null && !file.isEmpty()) {
 			try {
-				if (mockIdP!= null && mockIdP.isStarted()){
-					mockIdP.stop();
-				}
-			} catch (Exception e) {
-				logger.error("The mock IdP could not be stopped", e);
+				spConfig = new GsonBuilder()
+						.registerTypeAdapter(Document.class, new MetadataDeserializer())
+						.registerTypeAdapter(Interaction.class, new InteractionDeserializer())
+						.create()
+						.fromJson(Files.newBufferedReader(Paths.get(command.getOptionValue("config")), Charset.defaultCharset()),
+								SPConfiguration.class);
+			} catch (JsonSyntaxException e) {
+				logger.error("The JSON syntax in the configuration was invalid", e);
+			} catch (JsonIOException e) {
+				logger.error("The target configuration could not be read", e);
+			} catch (IOException e) {
+				logger.error("The target configuration could be opened", e);
 			}
+		} else {
+			// use empty SP configuration
+			spConfig = new SPConfiguration();
 		}
 	}
 
@@ -249,7 +236,8 @@ public class SPTestRunner {
 	 *            target SP
 	 * @return a string representing the test result in JSON format.
 	 */
-	private static TestStatus runTest(TestCase testcase) {
+	@Override
+	public boolean runTest(TestCase testcase) {
 		logger.info("Running testcase: "+ testcase.getClass().getSimpleName());
 		
 		// run the test case according to what type of test case it is
@@ -286,27 +274,27 @@ public class SPTestRunner {
 					 * Check the SAML Request according to the specifications of the
 					 * test case and return the status of the test
 					 */
-					TestStatus requestResult = reqTC.checkRequest(samlRequest,samlRequestBinding);
+					boolean requestResult = reqTC.checkRequest(samlRequest,samlRequestBinding);
 					
 					return requestResult;
 				} else {
 					logger.error("Could not retrieve the SAML Request that was sent by the target SP");
-					return TestStatus.CRITICAL;
+					return false;
 				}
 			} catch (FailingHttpStatusCodeException e) {
 				logger.error("The start page returned a failing HTTP status code", e);
-				return TestStatus.CRITICAL;
+				return false;
 			}
 		} else if (testcase instanceof LoginTestCase) {
 			LoginTestCase loginTC = (LoginTestCase) testcase;
 			/**
 			 * Check if login attempts are handled correctly
 			 */
-			TestStatus loginResult = loginTC.checkLogin();
+			boolean loginResult = loginTC.checkLogin();
 			return loginResult;
 		} else {
 			logger.error("Trying to run an unknown type of test case");
-			return null;
+			return false;
 		}
 	}
 
@@ -323,13 +311,13 @@ public class SPTestRunner {
 	 * @return a Node representing the ACS to which the Response should be sent. Note that the returned Node may not be the actual Node in
 	 *         the metadata of the targetSP since it could have been created from the information in the request.
 	 */
-	public static Node initiateLoginAttempt(WebClient browser, boolean spInitiated){
+	public Node initiateLoginAttempt(WebClient browser, boolean spInitiated){
 		Node applicableACS;
 		// determine the ACS location and binding, depending on the received SAML Request
 		try {
 			if (spInitiated) {
 				// retrieve the login page, thereby sending the AuthnRequest to the mock IdP
-				TestRunnerUtil.interactWithPage(browser.getPage(spConfig.getStartPage()), spConfig.getPreLoginInteractions());
+				interactWithPage(browser.getPage(spConfig.getStartPage()), spConfig.getPreLoginInteractions());
 				// check if the saml request has correctly been retrieved by the mock IdP
 				if (samlRequest == null || samlRequest.isEmpty()) {
 					logger.error("Could not retrieve the SAML request after SP-initiated login attempt");
@@ -364,7 +352,7 @@ public class SPTestRunner {
 	 * @return a Boolean object with value true if the login attempt was successful, false if 
 	 * the login attempt failed and null if the login attempt could not be completed
 	 */
-	public static Boolean completeLoginAttempt(WebClient browser, Node acs, String response){
+	public Boolean completeLoginAttempt(WebClient browser, Node acs, String response){
 		// start login attempt with target SP
 		try {
 			URL applicableACSURL = new URL(acs.getAttributes().getNamedItem(MD.LOCATION).getNodeValue());
@@ -422,7 +410,7 @@ public class SPTestRunner {
 	 * 
 	 * @return a new WebClient object that can be used as browser by the test runner.
 	 */
-	public static WebClient getNewBrowser(){
+	public WebClient getNewBrowser(){
 		WebClient browser = new WebClient();
 		// configure the browser that will be used during testing
 		browser.getOptions().setRedirectEnabled(true);
@@ -441,7 +429,7 @@ public class SPTestRunner {
 	 * 
 	 * @param request is the SAML Request
 	 */
-	public static String getAuthnRequest() {
+	public String getAuthnRequest() {
 		return samlRequest;
 	}
 	/**
@@ -452,7 +440,7 @@ public class SPTestRunner {
 	 * 
 	 * @param request is the SAML Request
 	 */
-	public static void setSamlRequest(String request) {
+	public void setSamlRequest(String request) {
 		samlRequest = request;
 	}
 
@@ -464,7 +452,7 @@ public class SPTestRunner {
 	 * 
 	 * @param binding is the name of the SAML Binding
 	 */
-	public static void setSamlRequestBinding(String binding) {
+	public void setSamlRequestBinding(String binding) {
 		samlRequestBinding = binding;
 	}
 
@@ -473,11 +461,11 @@ public class SPTestRunner {
 	 * 
 	 * @return the SPConfiguration object used in this test
 	 */
-	public static SPConfiguration getSPConfig() {
+	public SPConfiguration getSPConfig() {
 		return spConfig;
 	}
 
-	public static boolean checkLoginHTTPStatusCode(HtmlPage page){
+	public boolean checkLoginHTTPStatusCode(HtmlPage page){
 		// check the HTTP Status code of the page to see if the login was successful
 		if (spConfig.getLoginStatuscode() == 0) {
 			// do not match against status code
@@ -492,7 +480,7 @@ public class SPTestRunner {
 		}
 	}
 
-	public static boolean checkLoginURL(HtmlPage responsePage) {
+	public boolean checkLoginURL(HtmlPage responsePage) {
 		// check the URL of the page to see if the login was successful
 		if (spConfig.getLoginURL() == null) {
 			// do not match against URL
@@ -520,7 +508,7 @@ public class SPTestRunner {
 		}
 	}
 
-	public static boolean checkLoginContent(HtmlPage responsePage) {
+	public boolean checkLoginContent(HtmlPage responsePage) {
 		// check if the page matches what we expect to see when we log in
 		String page = responsePage.getWebResponse().getContentAsString();
 		if (spConfig.getLoginContent() == null) {
@@ -541,7 +529,7 @@ public class SPTestRunner {
 		}
 	}
 
-	public static boolean checkLoginCookies(Set<Cookie> sessionCookies) {
+	public boolean checkLoginCookies(Set<Cookie> sessionCookies) {
 		// check the cookies
 		if (spConfig.getLoginCookies().size() <= 0) {
 			// do not check cookies

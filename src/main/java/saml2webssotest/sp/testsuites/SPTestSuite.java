@@ -63,7 +63,6 @@ import org.slf4j.LoggerFactory;
 import saml2webssotest.common.SAMLAttribute;
 import saml2webssotest.common.SAMLUtil;
 import saml2webssotest.common.StringPair;
-import saml2webssotest.common.TestStatus;
 import saml2webssotest.common.TestSuite;
 import saml2webssotest.common.standardNames.MD;
 import saml2webssotest.common.standardNames.SAMLmisc;
@@ -301,7 +300,7 @@ public abstract class SPTestSuite implements TestSuite {
 	 * @return the minimal SAML Response
 	 */
 	public Response createMinimalWebSSOResponse(){
-		SPConfiguration sp = SPTestRunner.getSPConfig();
+		SPConfiguration sp = SPTestRunner.getInstance().getSPConfig();
 		try {
 			DefaultBootstrap.bootstrap();
 		} catch (ConfigurationException e) {
@@ -364,7 +363,7 @@ public abstract class SPTestSuite implements TestSuite {
 	 * Add the attributes configured for the target SP to the Assertion in an AttributeStatement
 	 */
 	public void addTargetSPAttributes(Assertion assertion){
-		SPConfiguration sp = SPTestRunner.getSPConfig();
+		SPConfiguration sp = SPTestRunner.getInstance().getSPConfig();
 		
 		try {
 			DefaultBootstrap.bootstrap();
@@ -417,7 +416,7 @@ public abstract class SPTestSuite implements TestSuite {
 		 * 
 		 * @return the status of the test
 		 */
-		TestStatus checkConfig(SPConfiguration config);
+		boolean checkConfig(SPConfiguration config);
 	}
 
 	public interface RequestTestCase extends TestCase {
@@ -427,7 +426,7 @@ public abstract class SPTestSuite implements TestSuite {
 		 * 
 		 * @return the status of the test
 		 */
-		TestStatus checkRequest(String request, String binding);
+		boolean checkRequest(String request, String binding);
 	}
 
 	public interface LoginTestCase extends TestCase {
@@ -447,7 +446,7 @@ public abstract class SPTestSuite implements TestSuite {
 		 * 
 		 * @return the status of the test
 		 */
-		TestStatus checkLogin();
+		boolean checkLogin();
 		
 		/*
 		 * The following example implementation tests if the target SP allows SP-initiated login attempts with a signed Response message. 
