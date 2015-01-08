@@ -5,7 +5,10 @@ import java.util.List;
 
 import org.opensaml.Configuration;
 import org.opensaml.DefaultBootstrap;
+import org.opensaml.common.xml.SAMLConstants;
+import org.opensaml.saml2.core.AuthnRequest;
 import org.opensaml.saml2.metadata.AssertionConsumerService;
+import org.opensaml.saml2.metadata.IndexedEndpoint;
 import org.opensaml.xml.ConfigurationException;
 import org.w3c.dom.Document;
 import org.w3c.dom.Node;
@@ -15,8 +18,6 @@ import saml2webssotest.common.Interaction;
 import saml2webssotest.common.SAMLUtil;
 import saml2webssotest.common.StringPair;
 import saml2webssotest.common.SAMLAttribute;
-import saml2webssotest.common.standardNames.MD;
-import saml2webssotest.common.standardNames.SAMLP;
 
 public class SPConfiguration {
 	/**
@@ -144,7 +145,7 @@ public class SPConfiguration {
 			return null;
 		
 		ArrayList<Node> nodes = new ArrayList<Node>();
-		NodeList allNodes = metadata.getElementsByTagNameNS(MD.NAMESPACE, tagName);
+		NodeList allNodes = metadata.getElementsByTagNameNS(SAMLConstants.SAML20MD_NS, tagName);
 		//convert NodeList to List of Node objects
 		for (int i = 0; i < allNodes.getLength(); i++){
 			nodes.add(allNodes.item(i));
@@ -166,7 +167,7 @@ public class SPConfiguration {
 			return null;
 		
 		ArrayList<String> resultAttributes = new ArrayList<String>();
-		NodeList allNodes = metadata.getElementsByTagNameNS(MD.NAMESPACE, tagName);
+		NodeList allNodes = metadata.getElementsByTagNameNS(SAMLConstants.SAML20MD_NS, tagName);
 		for (int i = 0; i < allNodes.getLength(); i++){
 			Node acs = allNodes.item(i);
 			resultAttributes.add(acs.getAttributes().getNamedItem(attrName).getNodeValue());
@@ -212,15 +213,15 @@ public class SPConfiguration {
 		// only retrieve the information from the authnrequest if it is actually provided
 		if (authnRequest != null){
 			// retrieve the ACS URL that was provided in the AuthnRequest
-			authnRequestNode = authnRequest.getElementsByTagNameNS(SAMLP.NAMESPACE, SAMLP.AUTHNREQUEST).item(0);
-			acsURL = authnRequestNode .getAttributes().getNamedItem(SAMLP.ASSERTIONCONSUMERSERVICEURL);
+			authnRequestNode = authnRequest.getElementsByTagNameNS(SAMLConstants.SAML20P_NS, AuthnRequest.DEFAULT_ELEMENT_LOCAL_NAME).item(0);
+			acsURL = authnRequestNode .getAttributes().getNamedItem(AuthnRequest.ASSERTION_CONSUMER_SERVICE_URL_ATTRIB_NAME);
 			// retrieve the ACS index that was provided in the AuthnRequest
-			acsIndex = authnRequestNode.getAttributes().getNamedItem(SAMLP.ASSERTIONCONSUMERSERVICEINDEX);
+			acsIndex = authnRequestNode.getAttributes().getNamedItem(AuthnRequest.ASSERTION_CONSUMER_SERVICE_INDEX_ATTRIB_NAME);
 		}
 		
 		// find the applicable ACS
 		if (acsURL == null){
-			ArrayList<Node> acsNodes = (ArrayList<Node>) getMDNodes(MD.ASSERTIONCONSUMERSERVICE);
+			ArrayList<Node> acsNodes = (ArrayList<Node>) getMDNodes(AssertionConsumerService.DEFAULT_ELEMENT_LOCAL_NAME);
 			
 			// no ACS location found in request, check the ACS index
 			if ( acsIndex  == null ){
@@ -229,8 +230,8 @@ public class SPConfiguration {
 				Node firstACS = null;
 				// check if one of the nodes is set as default and return its location
 				for (Node acs : acsNodes) {
-					if (acs.getAttributes().getNamedItem(MD.ISDEFAULT) != null) {
-						if(acs.getAttributes().getNamedItem(MD.ISDEFAULT).getNodeValue().equalsIgnoreCase("true")){
+					if (acs.getAttributes().getNamedItem(IndexedEndpoint.IS_DEFAULT_ATTRIB_NAME) != null) {
+						if(acs.getAttributes().getNamedItem(IndexedEndpoint.IS_DEFAULT_ATTRIB_NAME).getNodeValue().equalsIgnoreCase("true")){
 							return acs;
 						}
 					}
@@ -250,7 +251,7 @@ public class SPConfiguration {
 				int acsIndexInt = Integer.parseInt(acsIndex.getNodeValue());
 				// look for ACS with specified index
 				for (Node acs : acsNodes) {
-					int nodeIndex = Integer.parseInt(acs.getAttributes().getNamedItem(MD.INDEX).getNodeValue());
+					int nodeIndex = Integer.parseInt(acs.getAttributes().getNamedItem(IndexedEndpoint.INDEX_ATTRIB_NAME).getNodeValue());
 					if (nodeIndex == acsIndexInt)
 						// return the location for the ACS with the requested index
 						return acs;
@@ -267,7 +268,7 @@ public class SPConfiguration {
 			}
 			
 			// found ACS location in request, must also have a binding then
-			Node acsBinding = authnRequestNode.getAttributes().getNamedItem(SAMLP.PROTOCOLBINDING);
+			Node acsBinding = authnRequestNode.getAttributes().getNamedItem(AuthnRequest.PROTOCOL_BINDING_ATTRIB_NAME);
 			
 			// create a new ACS node with the given location and binding
 			try {
@@ -286,7 +287,7 @@ public class SPConfiguration {
 			// use max unsignedShort value so it is less likely to use an index that is already in use (but still uses a valid value)
 			acsObj.setIndex(new Integer(65535));
 			// return the ACS as a Document (converting the SAMLObject to a String and then from String to a Document)
-			return SAMLUtil.fromXML(SAMLUtil.toXML(acsObj)).getElementsByTagNameNS(MD.NAMESPACE, MD.ASSERTIONCONSUMERSERVICE).item(0);
+			return SAMLUtil.fromXML(SAMLUtil.toXML(acsObj)).getElementsByTagNameNS(SAMLConstants.SAML20MD_NS, AssertionConsumerService.DEFAULT_ELEMENT_LOCAL_NAME).item(0);
 		}
 	}
 }

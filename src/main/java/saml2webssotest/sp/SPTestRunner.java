@@ -17,6 +17,8 @@ import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Options;
 import org.apache.log4j.BasicConfigurator;
 import org.apache.log4j.PropertyConfigurator;
+import org.opensaml.common.xml.SAMLConstants;
+import org.opensaml.saml2.metadata.AssertionConsumerService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
@@ -36,13 +38,12 @@ import com.google.gson.JsonSyntaxException;
 import saml2webssotest.common.Interaction;
 import saml2webssotest.common.InteractionDeserializer;
 import saml2webssotest.common.MetadataDeserializer;
+import saml2webssotest.common.StandardNames;
 import saml2webssotest.common.StringPair;
 import saml2webssotest.common.SAMLUtil;
 import saml2webssotest.common.TestRunner;
 import saml2webssotest.common.TestSuite.TestCase;
 import saml2webssotest.common.TestSuite.MetadataTestCase;
-import saml2webssotest.common.standardNames.MD;
-import saml2webssotest.common.standardNames.SAMLmisc;
 import saml2webssotest.sp.mockIdPHandlers.SamlWebSSOHandler;
 import saml2webssotest.sp.testsuites.SPTestSuite;
 import saml2webssotest.sp.testsuites.SPTestSuite.ConfigTestCase;
@@ -185,10 +186,11 @@ public class SPTestRunner extends TestRunner {
 	
 	public static SPTestRunner getInstance(){
 		if (instance == null){
-			throw new IllegalStateException("Instance not created yet");
+			throw new IllegalStateException("The SPTestRunner instance has not been created yet");
 		}
 		return instance;
 	}
+	
 	/**
 	 * Create the mock server, set its handlers and start the server
 	 */
@@ -355,17 +357,17 @@ public class SPTestRunner extends TestRunner {
 	public Boolean completeLoginAttempt(WebClient browser, Node acs, String response){
 		// start login attempt with target SP
 		try {
-			URL applicableACSURL = new URL(acs.getAttributes().getNamedItem(MD.LOCATION).getNodeValue());
-			String applicableACSBinding = acs.getAttributes().getNamedItem(MD.BINDING).getNodeValue();
+			URL applicableACSURL = new URL(acs.getAttributes().getNamedItem(AssertionConsumerService.LOCATION_ATTRIB_NAME).getNodeValue());
+			String applicableACSBinding = acs.getAttributes().getNamedItem(AssertionConsumerService.BINDING_ATTRIB_NAME).getNodeValue();
 			// create HTTP request to send the SAML response to the SP's ACS url
 			WebRequest sentResponse = new WebRequest(applicableACSURL, HttpMethod.POST);
 			ArrayList<NameValuePair> postParameters = new ArrayList<NameValuePair>();
 			NameValuePair samlresponse;
 			// set the SAML URL parameter according to the requested binding
-			if (applicableACSBinding.equalsIgnoreCase(SAMLmisc.BINDING_HTTP_POST)){
-				samlresponse = new NameValuePair(SAMLmisc.URLPARAM_SAMLRESPONSE_POST, SAMLUtil.encodeSamlMessageForPost(response));
+			if (applicableACSBinding.equalsIgnoreCase(SAMLConstants.SAML2_POST_BINDING_URI)){
+				samlresponse = new NameValuePair(StandardNames.URLPARAM_SAMLRESPONSE_POST, SAMLUtil.encodeSamlMessageForPost(response));
 			}
-			else if (applicableACSBinding.equalsIgnoreCase(SAMLmisc.BINDING_HTTP_ARTIFACT)){
+			else if (applicableACSBinding.equalsIgnoreCase(SAMLConstants.SAML2_ARTIFACT_BINDING_URI)){
 				// TODO: support artifact binding
 				logger.debug("Response needs to be sent with Artifact binding, this is not yet supported");
 				return null;

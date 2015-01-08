@@ -27,6 +27,7 @@ import org.bouncycastle.openssl.PEMReader;
 import org.joda.time.DateTime;
 import org.opensaml.Configuration;
 import org.opensaml.DefaultBootstrap;
+import org.opensaml.common.xml.SAMLConstants;
 import org.opensaml.saml2.core.Assertion;
 import org.opensaml.saml2.core.AttributeStatement;
 import org.opensaml.saml2.core.AttributeValue;
@@ -44,6 +45,7 @@ import org.opensaml.saml2.core.Subject;
 import org.opensaml.saml2.core.SubjectConfirmation;
 import org.opensaml.saml2.core.SubjectConfirmationData;
 import org.opensaml.saml2.core.impl.AttributeBuilder;
+import org.opensaml.saml2.metadata.AssertionConsumerService;
 import org.opensaml.saml2.metadata.EntityDescriptor;
 import org.opensaml.saml2.metadata.IDPSSODescriptor;
 import org.opensaml.saml2.metadata.KeyDescriptor;
@@ -64,8 +66,6 @@ import saml2webssotest.common.SAMLAttribute;
 import saml2webssotest.common.SAMLUtil;
 import saml2webssotest.common.StringPair;
 import saml2webssotest.common.TestSuite;
-import saml2webssotest.common.standardNames.MD;
-import saml2webssotest.common.standardNames.SAMLmisc;
 import saml2webssotest.sp.SPConfiguration;
 import saml2webssotest.sp.SPTestRunner;
 
@@ -130,7 +130,7 @@ public abstract class SPTestSuite implements TestSuite {
 		SingleSignOnService ssos = (SingleSignOnService) xmlbuilderfac.getBuilder(SingleSignOnService.DEFAULT_ELEMENT_NAME).buildObject(SingleSignOnService.DEFAULT_ELEMENT_NAME);
 		KeyDescriptor keydescriptor = (KeyDescriptor) xmlbuilderfac.getBuilder(KeyDescriptor.DEFAULT_ELEMENT_NAME).buildObject(KeyDescriptor.DEFAULT_ELEMENT_NAME);
 		
-		ssos.setBinding(SAMLmisc.BINDING_HTTP_REDIRECT);
+		ssos.setBinding(SAMLConstants.SAML2_REDIRECT_BINDING_URI);
 		if (getMockServerURL() == null)
 			return null;
 
@@ -146,7 +146,7 @@ public abstract class SPTestSuite implements TestSuite {
 		}
 		keydescriptor.setUse(UsageType.SIGNING);
 		 
-		idpssod.addSupportedProtocol(SAMLmisc.SAML20_PROTOCOL);
+		idpssod.addSupportedProtocol(SAMLConstants.SAML20P_NS);
 		idpssod.getSingleSignOnServices().add(ssos);
 		idpssod.getKeyDescriptors().add(keydescriptor);
 		
@@ -323,22 +323,22 @@ public abstract class SPTestSuite implements TestSuite {
 		AuthnContextClassRef authncontextclassref = (AuthnContextClassRef) builderfac.getBuilder(AuthnContextClassRef.DEFAULT_ELEMENT_NAME).buildObject(AuthnContextClassRef.DEFAULT_ELEMENT_NAME);
 
 		// create status for Response
-		statuscode.setValue(SAMLmisc.STATUS_SUCCESS);
+		statuscode.setValue(StatusCode.SUCCESS_URI);
 		status.setStatusCode(statuscode);
 		// create Issuer for Assertion 
 		issuer.setValue(getmockIdPEntityID());
 		// create Subject for Assertion
-		subjectconfdata.setRecipient(sp.getApplicableACS(null).getAttributes().getNamedItem(MD.LOCATION).getNodeValue());
+		subjectconfdata.setRecipient(sp.getApplicableACS(null).getAttributes().getNamedItem(AssertionConsumerService.LOCATION_ATTRIB_NAME).getNodeValue());
 		subjectconfdata.setNotOnOrAfter(DateTime.now().plusMinutes(5));
 		subjectconf.setSubjectConfirmationData(subjectconfdata);
-		subjectconf.setMethod(SAMLmisc.CONFIRMATION_METHOD_BEARER);
+		subjectconf.setMethod(SubjectConfirmation.METHOD_BEARER);
 		subject.getSubjectConfirmations().add(subjectconf);
 		// create Conditions for Assertion
-		aud.setAudienceURI(sp.getMDAttribute(MD.ENTITYDESCRIPTOR, MD.ENTITYID));
+		aud.setAudienceURI(sp.getMDAttribute(EntityDescriptor.DEFAULT_ELEMENT_LOCAL_NAME, EntityDescriptor.ENTITY_ID_ATTRIB_NAME));
 		audRes.getAudiences().add(aud);
 		conditions.getAudienceRestrictions().add(audRes);
 		// create AuthnStatement for Assertion
-		authncontextclassref.setAuthnContextClassRef(SAMLmisc.AUTHNCONTEXT_PASSWORD);
+		authncontextclassref.setAuthnContextClassRef(AuthnContext.PASSWORD_AUTHN_CTX);
 		authncontext.setAuthnContextClassRef(authncontextclassref);
 		authnstatement.setAuthnContext(authncontext);
 		authnstatement.setAuthnInstant(DateTime.now());
