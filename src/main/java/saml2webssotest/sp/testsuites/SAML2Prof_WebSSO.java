@@ -7,7 +7,6 @@ import java.security.GeneralSecurityException;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.List;
-
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
@@ -380,7 +379,6 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			Response response;
 			List<Assertion> assertions;
 			Assertion assertion;
-			List<SubjectConfirmation> subConfs;
 			Node acs;
 			
 			// initiate the login attempt at the target SP
@@ -388,7 +386,7 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			// retrieve the ID of the AuthnRequest
 			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getInstance().getAuthnRequest());
 			// create the minimally required (by the SAML Web SSO profile) Response 
-			response = createMinimalWebSSOResponse();
+			response = createMinimalWebSSOResponse(requestID);
 			// get all Assertion elements from the Response
 			assertions = response.getAssertions();
 			// if more than 1 assertion was created in the minimal Response, we should log it since it means something 
@@ -399,11 +397,6 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			}
 			// retrieve the first Assertion element, which should also be the only one
 			assertion = assertions.get(0);
-			// set the InReplyTo attribute on the SubjectConfirmationData element of every SubjectConfirmations element
-			subConfs = assertion.getSubject().getSubjectConfirmations();
-			for (SubjectConfirmation subconf : subConfs) {
-				subconf.getSubjectConfirmationData().setInResponseTo(requestID);
-			}
 			// add the Attribute elements specified in targetSP.json to the Assertion
 			addTargetSPAttributes(assertion);
 			// sign the assertion
@@ -417,8 +410,6 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 					.getAttributes()
 					.getNamedItem(IndexedEndpoint.LOCATION_ATTRIB_NAME)
 					.getNodeValue());
-			// set the InResponseTo attribute on the Response element
-			response.setInResponseTo(requestID);
 			// sign the Response element
 			SAMLUtil.sign(response, getX509Credentials(null));
 			// complete the login attempt 
@@ -439,21 +430,15 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			response = null;
 			assertions = null;
 			assertion = null;
-			subConfs = null;
 			acs = null;
 
 			acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, true);
 			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getInstance().getAuthnRequest());
-			response = createMinimalWebSSOResponse();
+			response = createMinimalWebSSOResponse(requestID);
 			assertions = response.getAssertions();
 			assertion = assertions.get(0);
-			subConfs = assertion.getSubject().getSubjectConfirmations();
-			for (SubjectConfirmation subconf : subConfs) {
-				subconf.getSubjectConfirmationData().setInResponseTo(requestID);
-			}
 			addTargetSPAttributes(assertion);
 			SAMLUtil.sign(assertion, getX509Credentials(null));
-			response.setInResponseTo(requestID);
 			/*
 			 * Note that the invalid signature is the following Base64-encoded string:
 			 * "This is the invalid signature that will be encoded in Base64 and will replace the valid signature"
@@ -471,20 +456,15 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			response = null;
 			assertions = null;
 			assertion = null;
-			subConfs = null;
 			
 			acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, true);
 			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getInstance().getAuthnRequest());
-			response = createMinimalWebSSOResponse();
+			response = createMinimalWebSSOResponse(requestID);
 			assertions = response.getAssertions();
 			if (assertions.size() > 1) {
 				logger.debug("The minimal Web SSO Response was created with more than 1 Assertion");
 			}
 			assertion = assertions.get(0);
-			subConfs = assertion.getSubject().getSubjectConfirmations();
-			for (SubjectConfirmation subconf : subConfs) {
-				subconf.getSubjectConfirmationData().setInResponseTo(requestID);
-			}
 			addTargetSPAttributes(assertion);
 			response.setDestination(
 					SPTestRunner
@@ -494,7 +474,6 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 					.getAttributes()
 					.getNamedItem(IndexedEndpoint.LOCATION_ATTRIB_NAME)
 					.getNodeValue());
-			response.setInResponseTo(requestID);
 			SAMLUtil.sign(response, getX509Credentials(null));
 			/*
 			 * Note that the invalid signature is the following Base64-encoded string:
@@ -581,16 +560,11 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			 */
 			acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, true);
 			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getInstance().getAuthnRequest());
-			response = createMinimalWebSSOResponse();
+			response = createMinimalWebSSOResponse(requestID);
 			assertions = response.getAssertions();
 			assertion = assertions.get(0);
-			subConfs = assertion.getSubject().getSubjectConfirmations();
-			for (SubjectConfirmation subconf : subConfs) {
-				subconf.getSubjectConfirmationData().setInResponseTo(requestID);
-			}
 			addTargetSPAttributes(assertion);
 			SAMLUtil.sign(assertion, getX509Credentials(null));
-			response.setInResponseTo(requestID);
 			Boolean loginValidRecipient = SPTestRunner.getInstance().completeLoginAttempt(browser, acs, SAMLUtil.toXML(response));
 
 			if (loginValidRecipient == null) {
@@ -616,19 +590,17 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			
 			acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, true);
 			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getInstance().getAuthnRequest());
-			response = createMinimalWebSSOResponse();
+			response = createMinimalWebSSOResponse(requestID);
 			assertions = response.getAssertions();
 			assertion = assertions.get(0);
 			subConfs = assertion.getSubject().getSubjectConfirmations();
 			for (SubjectConfirmation subConf : subConfs) {
 				SubjectConfirmationData subConfData = (SubjectConfirmationData) subConf.getSubjectConfirmationData();
-				subConfData.setInResponseTo(requestID);
 				// set the recipient to an invalid location (that is still a valid URL)
 				subConfData.setRecipient("http://www.topdesk.com/");
 			}
 			addTargetSPAttributes(assertion);
 			SAMLUtil.sign(assertion, getX509Credentials(null));
-			response.setInResponseTo(requestID);
 			Boolean loginInvalidRecipient = SPTestRunner.getInstance().completeLoginAttempt(browser, acs, SAMLUtil.toXML(response));
 
 			if (loginInvalidRecipient == null) {
@@ -698,16 +670,11 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 
 			acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, true);
 			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getInstance().getAuthnRequest());
-			response = createMinimalWebSSOResponse();
+			response = createMinimalWebSSOResponse(requestID);
 			assertions = response.getAssertions();
 			assertion = assertions.get(0);
-			subConfs = assertion.getSubject().getSubjectConfirmations();
-			for (SubjectConfirmation subconf : subConfs) {
-				subconf.getSubjectConfirmationData().setInResponseTo(requestID);
-			}
 			addTargetSPAttributes(assertion);
 			SAMLUtil.sign(assertion, getX509Credentials(null));
-			response.setInResponseTo(requestID);
 			Boolean loginValidNOOA = SPTestRunner.getInstance().completeLoginAttempt(browser, acs, SAMLUtil.toXML(response));
 			
 			if (loginValidNOOA == null) {
@@ -735,19 +702,17 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 
 			acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, true);
 			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getInstance().getAuthnRequest());
-			response = createMinimalWebSSOResponse();
+			response = createMinimalWebSSOResponse(requestID);
 			assertions = response.getAssertions();
 			assertion = assertions.get(0);
 			subConfs = assertion.getSubject().getSubjectConfirmations();
 			for (SubjectConfirmation subConf : subConfs) {
 				SubjectConfirmationData subConfData = subConf.getSubjectConfirmationData();
-				subConfData.setInResponseTo(requestID);
 				// set the NotOnOrAfter attribute to now so it will be invalid when it arrives at the target SP
 				subConfData.setNotOnOrAfter(DateTime.now());
 			}
 			addTargetSPAttributes(assertion);
 			SAMLUtil.sign(assertion, getX509Credentials(null));
-			response.setInResponseTo(requestID);
 			// wait for the same amount of time as the clock skew on the target SP to make sure
 			// the Response can't be made valid due to that clock skew (and a second longer, just to make sure)
 			try {
@@ -824,16 +789,10 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 
 			acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, true);
 			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getInstance().getAuthnRequest());
-			response = createMinimalWebSSOResponse();
-			assertions = response.getAssertions();
-			assertion = assertions.get(0);
-			subConfs = assertion.getSubject().getSubjectConfirmations();
-			for (SubjectConfirmation subconf : subConfs) {
-				subconf.getSubjectConfirmationData().setInResponseTo(requestID);
-			}
+			response = createMinimalWebSSOResponse(requestID);
+			assertion = response.getAssertions().get(0);
 			addTargetSPAttributes(assertion);
 			SAMLUtil.sign(assertion, getX509Credentials(null));
-			response.setInResponseTo(requestID);
 			Boolean loginValidIRT = SPTestRunner.getInstance().completeLoginAttempt(browser, acs, SAMLUtil.toXML(response));
 
 			if (loginValidIRT == null) {
@@ -860,7 +819,7 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 
 			acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, true);
 			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getInstance().getAuthnRequest());
-			response = createMinimalWebSSOResponse();
+			response = createMinimalWebSSOResponse(requestID);
 			assertions = response.getAssertions();
 			assertion = assertions.get(0);
 			subConfs = assertion.getSubject().getSubjectConfirmations();
@@ -870,7 +829,6 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			}
 			addTargetSPAttributes(assertion);
 			SAMLUtil.sign(assertion, getX509Credentials(null));
-			response.setInResponseTo(requestID);
 			Boolean loginInvalidIRTSubConfData = SPTestRunner.getInstance().completeLoginAttempt(browser, acs, SAMLUtil.toXML(response));
 			
 			/**
@@ -887,14 +845,9 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 
 			acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, true);
 			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getInstance().getAuthnRequest());
-			response = createMinimalWebSSOResponse();
+			response = createMinimalWebSSOResponse(requestID);
 			assertions = response.getAssertions();
 			assertion = assertions.get(0);
-			subConfs = assertion.getSubject().getSubjectConfirmations();
-			for (SubjectConfirmation subConf : subConfs) {
-				SubjectConfirmationData subConfData = subConf.getSubjectConfirmationData();
-				subConfData.setInResponseTo(requestID);
-			}
 			addTargetSPAttributes(assertion);
 			SAMLUtil.sign(assertion, getX509Credentials(null));
 			response.setInResponseTo(requestID + "_");
@@ -970,11 +923,8 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			 * Try to log in with an unsolicited Response without the InResponseTo attribute present
 			 */
 			acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, false);
-			response = createMinimalWebSSOResponse();
+			response = createMinimalWebSSOResponse(null);
 			assertions = response.getAssertions();
-			if (assertions.size() > 1) {
-				logger.debug("The minimal Web SSO Response was created with more than 1 Assertion");
-			}
 			assertion = assertions.get(0);
 			addTargetSPAttributes(assertion);
 			SAMLUtil.sign(assertion, getX509Credentials(null));
@@ -1001,7 +951,7 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			acs = null;
 			
 			acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, false);
-			response = createMinimalWebSSOResponse();
+			response = createMinimalWebSSOResponse(null);
 			assertions = response.getAssertions();
 			assertion = assertions.get(0);
 			subConfs = assertion.getSubject().getSubjectConfirmations();
@@ -1036,8 +986,8 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 	 * repeating the use of this profile.
 	 * 
 	 * Tested by trying to log in to the target SP with a Response that has a valid, but short, SessionNotOnOrAfter attribute, then checking that
-	 * you are still logged in after a page refresh. Then we wait for the session to become invalid and check that we are no longer logged in 
-	 * after a page refresh.
+	 * you are still logged in after a page refresh. Then we disable the mock IdP so the SP can't re-authenticate and we wait for the session to
+	 * become invalid and check that we are no longer logged in after a page refresh.
 	 * 
 	 * @author RiaasM
 	 */
@@ -1068,19 +1018,13 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			Response response;
 			List<Assertion> assertions;
 			Assertion assertion;
-			List<SubjectConfirmation> subConfs;
 			Node acs;
 	
 			acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, true);
 			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getInstance().getAuthnRequest());
-			response = createMinimalWebSSOResponse();
+			response = createMinimalWebSSOResponse(requestID);
 			assertions = response.getAssertions();
 			assertion = assertions.get(0);
-			subConfs = assertion.getSubject().getSubjectConfirmations();
-			for (SubjectConfirmation subConf : subConfs) {
-				SubjectConfirmationData subConfData = (SubjectConfirmationData) subConf.getSubjectConfirmationData();
-				subConfData.setInResponseTo(requestID);
-			}
 			List<AuthnStatement> authnstatements = assertion.getAuthnStatements();
 			for (AuthnStatement authnstatement : authnstatements) {
 				// make the session valid for only a second
@@ -1088,7 +1032,6 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			}
 			addTargetSPAttributes(assertion);
 			SAMLUtil.sign(assertion, getX509Credentials(null));
-			response.setInResponseTo(requestID);
 			Boolean loginSessionValidity = SPTestRunner.getInstance().completeLoginAttempt(browser, acs, SAMLUtil.toXML(response));
 	
 			if (loginSessionValidity == null){
@@ -1111,9 +1054,12 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 				// check if you're still logged in and wait until the session is invalid
 				if (!SPTestRunner.getInstance().checkLoginContent(curPage) || !SPTestRunner.getInstance().checkLoginCookies(browser.getCookies(curPage.getUrl()))
 						|| !SPTestRunner.getInstance().checkLoginHTTPStatusCode(curPage) || !SPTestRunner.getInstance().checkLoginURL(curPage)) {
-					resultMessage = "The Service Provider loses its login status after a refresh which should not happen";
+					resultMessage = "The Service Provider loses its login status after a refresh while the session is still valid";
 					return false;
 				}
+				// disable the mock IdP so the SP can't re-authenticate the session
+				SPTestRunner.getInstance().killMockServer();
+				
 				// wait till the session is no longer valid
 				Thread.sleep(SPTestRunner.getInstance().getSPConfig().getClockSkew() + 2000);
 				// refresh the page and check if you're still logged in
@@ -1181,22 +1127,15 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			Response response;
 			List<Assertion> assertions;
 			Assertion assertion;
-			List<SubjectConfirmation> subConfs;
 			Node acs;
 
 			acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, true);
 			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getInstance().getAuthnRequest());
-			response = createMinimalWebSSOResponse();
+			response = createMinimalWebSSOResponse(requestID);
 			assertions = response.getAssertions();
 			assertion = assertions.get(0);
-			subConfs = assertion.getSubject().getSubjectConfirmations();
-			for (SubjectConfirmation subConf : subConfs) {
-				SubjectConfirmationData subConfData = (SubjectConfirmationData) subConf.getSubjectConfirmationData();
-				subConfData.setInResponseTo(requestID);
-			}
 			addTargetSPAttributes(assertion);
 			SAMLUtil.sign(assertion, getX509Credentials(null));
-			response.setInResponseTo(requestID);
 			String responseBearer1 = SAMLUtil.toXML(response);
 			Boolean loginBearer1 = SPTestRunner.getInstance().completeLoginAttempt(browser, acs, responseBearer1);
 
@@ -1215,22 +1154,15 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			response = null;
 			assertions = null;
 			assertion = null;
-			subConfs = null;
 			acs = null;
 			
 			acs = SPTestRunner.getInstance().initiateLoginAttempt(secondBrowser, true);
 			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getInstance().getAuthnRequest());
-			response = createMinimalWebSSOResponse();
+			response = createMinimalWebSSOResponse(requestID);
 			assertions = response.getAssertions();
 			assertion = assertions.get(0);
-			subConfs = assertion.getSubject().getSubjectConfirmations();
-			for (SubjectConfirmation subConf : subConfs) {
-				SubjectConfirmationData subConfData = (SubjectConfirmationData) subConf.getSubjectConfirmationData();
-				subConfData.setInResponseTo(requestID);
-			}
 			addTargetSPAttributes(assertion);
 			SAMLUtil.sign(assertion, getX509Credentials(null));
-			response.setInResponseTo(requestID);
 			String responseBearer2 = SAMLUtil.toXML(response);
 			Boolean loginBearer2 = SPTestRunner.getInstance().completeLoginAttempt(secondBrowser, acs, responseBearer2);
 
@@ -1261,7 +1193,7 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			}
 			else{
 				resultMessage = "The Service Provider ensures that bearer assertions are not replayed";
-				return false;
+				return true;
 			}
 		}
 	}
@@ -1277,9 +1209,9 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 	 * 		- This should log in correctly 
 	 * 	- a Response that has one Assertion that has a subjectconfirmation with an invalid Address (all other attributes are already tested separately anyway)  
 	 * 		- This should fail to log in
-	 * 	- a Response that has one Assertion that has an invalid NotBefore date on the Conditions element 
+	 * 	- a Response that has one Assertion that has an invalid NotBefore date (1 hour after now) on the Conditions element 
 	 * 		- This should fail to log in
-	 * 	- a Response that has one Assertion that has an invalid NotOnOrAfter date on the Conditions element 
+	 * 	- a Response that has one Assertion that has an invalid NotOnOrAfter date (1 hour before now) on the Conditions element 
 	 * 		- This should fail to log in
 	 * - a Response that has one Assertion that has an invalid AudienceRestriction element
 	 * 		- This should fail to log in
@@ -1317,22 +1249,17 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			Assertion assertion;
 			List<SubjectConfirmation> subConfs;
 			Node acs;
+			
 			/**
 			 * Try to log in with a valid Assertion
 			 */
 			acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, true);
 			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getInstance().getAuthnRequest());
-			response = createMinimalWebSSOResponse();
+			response = createMinimalWebSSOResponse(requestID);
 			assertions = response.getAssertions();
 			assertion = assertions.get(0);
-			subConfs = assertion.getSubject().getSubjectConfirmations();
-			for (SubjectConfirmation subConf : subConfs) {
-				SubjectConfirmationData subConfData = (SubjectConfirmationData) subConf.getSubjectConfirmationData();
-				subConfData.setInResponseTo(requestID);
-			}
 			addTargetSPAttributes(assertion);
 			SAMLUtil.sign(assertion, getX509Credentials(null));
-			response.setInResponseTo(requestID);
 			Boolean loginValidAssertion = SPTestRunner.getInstance().completeLoginAttempt(browser, acs, SAMLUtil.toXML(response));
 
 			if (loginValidAssertion == null) {
@@ -1358,20 +1285,17 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 
 			acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, true);
 			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getInstance().getAuthnRequest());
-			response = createMinimalWebSSOResponse();
+			response = createMinimalWebSSOResponse(requestID);
 			assertions = response.getAssertions();
 			assertion = assertions.get(0);
 			subConfs = assertion.getSubject().getSubjectConfirmations();
 			for (SubjectConfirmation subConf : subConfs) {
 				SubjectConfirmationData subConfData = (SubjectConfirmationData) subConf.getSubjectConfirmationData();
-				subConfData.setInResponseTo(requestID);
 				// set the attribute to a invalid address (but still a valid URL), this should normally be the address from where the assertion is sent (i.e. the IdP's address)
 				subConfData.setAddress("http://www.topdesk.com/");
-
 			}
 			addTargetSPAttributes(assertion);
 			SAMLUtil.sign(assertion, getX509Credentials(null));
-			response.setInResponseTo(requestID);
 			Boolean loginInvalidAddress = SPTestRunner.getInstance().completeLoginAttempt(browser, acs, SAMLUtil.toXML(response));
 
 			if (loginInvalidAddress == null) {
@@ -1384,7 +1308,7 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			}
 			
 			/**
-			 * TODO Try to log in with an Assertion that has an invalid NotBefore date on the Conditions element
+			 * Try to log in with an Assertion that has an invalid NotBefore date on the Conditions element
 			 */
 
 			browser = SPTestRunner.getInstance().getNewBrowser();
@@ -1397,20 +1321,13 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 
 			acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, true);
 			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getInstance().getAuthnRequest());
-			response = createMinimalWebSSOResponse();
+			response = createMinimalWebSSOResponse(requestID);
 			assertions = response.getAssertions();
 			assertion = assertions.get(0);
-			subConfs = assertion.getSubject().getSubjectConfirmations();
-			for (SubjectConfirmation subConf : subConfs) {
-				SubjectConfirmationData subConfData = (SubjectConfirmationData) subConf.getSubjectConfirmationData();
-				subConfData.setInResponseTo(requestID);
-				// set the attribute to a invalid address (but still a valid URL), this should normally be the address from where the assertion is sent (i.e. the IdP's address)
-				subConfData.setAddress("http://www.topdesk.com/");
-
-			}
+			// create Conditions element with invalid NotBefore attribute
+			assertion.getConditions().setNotBefore(DateTime.now().plusHours(1));
 			addTargetSPAttributes(assertion);
 			SAMLUtil.sign(assertion, getX509Credentials(null));
-			response.setInResponseTo(requestID);
 			Boolean loginInvalidNotBefore = SPTestRunner.getInstance().completeLoginAttempt(browser, acs, SAMLUtil.toXML(response));
 
 			if (loginInvalidNotBefore == null) {
@@ -1423,7 +1340,7 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			}
 			
 			/**
-			 * TODO Try to log in with an Assertion that has an invalid NotOnOrAfter date on the Conditions element
+			 * Try to log in with an Assertion that has an invalid NotOnOrAfter date on the Conditions element
 			 */
 
 			browser = SPTestRunner.getInstance().getNewBrowser();
@@ -1436,20 +1353,15 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 
 			acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, true);
 			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getInstance().getAuthnRequest());
-			response = createMinimalWebSSOResponse();
+			response = createMinimalWebSSOResponse(requestID);
 			assertions = response.getAssertions();
 			assertion = assertions.get(0);
 			subConfs = assertion.getSubject().getSubjectConfirmations();
-			for (SubjectConfirmation subConf : subConfs) {
-				SubjectConfirmationData subConfData = (SubjectConfirmationData) subConf.getSubjectConfirmationData();
-				subConfData.setInResponseTo(requestID);
-				// set the attribute to a invalid address (but still a valid URL), this should normally be the address from where the assertion is sent (i.e. the IdP's address)
-				subConfData.setAddress("http://www.topdesk.com/");
-
-			}
+			// create Conditions element with invalid NotOnOrAfter attribute
+			assertion.getConditions().setNotOnOrAfter(DateTime.now().minusHours(1));
+			
 			addTargetSPAttributes(assertion);
 			SAMLUtil.sign(assertion, getX509Credentials(null));
-			response.setInResponseTo(requestID);
 			Boolean loginInvalidNotOnOrAfter = SPTestRunner.getInstance().completeLoginAttempt(browser, acs, SAMLUtil.toXML(response));
 
 			if (loginInvalidNotOnOrAfter == null) {
@@ -1462,7 +1374,7 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			}
 			
 			/**
-			 * TODO Try to log in with an Assertion that has an invalid AudienceRestriction element
+			 * Try to log in with an Assertion that has an invalid AudienceRestriction element
 			 */
 
 			browser = SPTestRunner.getInstance().getNewBrowser();
@@ -1475,20 +1387,14 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 
 			acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, true);
 			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getInstance().getAuthnRequest());
-			response = createMinimalWebSSOResponse();
+			response = createMinimalWebSSOResponse(requestID);
 			assertions = response.getAssertions();
 			assertion = assertions.get(0);
-			subConfs = assertion.getSubject().getSubjectConfirmations();
-			for (SubjectConfirmation subConf : subConfs) {
-				SubjectConfirmationData subConfData = (SubjectConfirmationData) subConf.getSubjectConfirmationData();
-				subConfData.setInResponseTo(requestID);
-				// set the attribute to a invalid address (but still a valid URL), this should normally be the address from where the assertion is sent (i.e. the IdP's address)
-				subConfData.setAddress("http://www.topdesk.com/");
-
-			}
+			// set the invalid audience value (but make sure it is still a valid URI)
+			// (note that the minimal response created by SAMLUtil has only 1 audiencerestriction with only 1 audience)
+			assertion.getConditions().getAudienceRestrictions().get(0).getAudiences().get(0).setAudienceURI("http://www.topdesk.com/");
 			addTargetSPAttributes(assertion);
 			SAMLUtil.sign(assertion, getX509Credentials(null));
-			response.setInResponseTo(requestID);
 			Boolean loginInvalidAudienceRestriction = SPTestRunner.getInstance().completeLoginAttempt(browser, acs, SAMLUtil.toXML(response));
 
 			if (loginInvalidAudienceRestriction == null) {
@@ -1501,7 +1407,7 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			}
 			
 			/**
-			 * TODO Try to log in with two Assertions, one invalid and one valid, both containing sufficient data for authentication (i.e. SubjectConfirmation and AuthnStatement elements)
+			 * Try to log in with two Assertions, one invalid and one valid, both containing sufficient data for authentication (i.e. SubjectConfirmation and AuthnStatement elements)
 			 */
 
 			browser = SPTestRunner.getInstance().getNewBrowser();
@@ -1514,31 +1420,41 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 
 			acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, true);
 			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getInstance().getAuthnRequest());
-			response = createMinimalWebSSOResponse();
+			response = createMinimalWebSSOResponse(requestID);
 			assertions = response.getAssertions();
 			assertion = assertions.get(0);
 			subConfs = assertion.getSubject().getSubjectConfirmations();
 			for (SubjectConfirmation subConf : subConfs) {
 				SubjectConfirmationData subConfData = (SubjectConfirmationData) subConf.getSubjectConfirmationData();
-				subConfData.setInResponseTo(requestID);
 				// set the attribute to a invalid address (but still a valid URL), this should normally be the address from where the assertion is sent (i.e. the IdP's address)
 				subConfData.setAddress("http://www.topdesk.com/");
-
 			}
+			// create Conditions element with invalid NotOnOrAfter attribute
+			assertion.getConditions().setNotOnOrAfter(DateTime.now().minusHours(1));
+			// create Conditions element with invalid NotBefore attribute
+			assertion.getConditions().setNotBefore(DateTime.now().plusHours(1));
+			
 			addTargetSPAttributes(assertion);
-			SAMLUtil.sign(assertion, getX509Credentials(null));
-			response.setInResponseTo(requestID);
+			// create a second, valid assertion 
+			Assertion validAssertion = createMinimalAssertion(requestID);
+			// sign the assertion
+			SAMLUtil.sign(validAssertion, getX509Credentials(null));
+			// add the attributes required by the target SP
+			addTargetSPAttributes(validAssertion);
+			// add the assertion to the response
+			response.getAssertions().add(validAssertion);
+			
 			Boolean loginInvalidAndValidAssertions = SPTestRunner.getInstance().completeLoginAttempt(browser, acs, SAMLUtil.toXML(response));
 
 			if (loginInvalidAndValidAssertions == null) {
 				logger.debug("The login attempt could not be completed");
 				return false;
 			}
-			else if (loginInvalidAndValidAssertions) {
-				resultMessage = "The Service Provider did not verify the NotBefore time on the Conditions element";
+			else if (!loginInvalidAndValidAssertions) {
+				resultMessage = "The Service Provider did not use the available, valid assertion to authenticate when an invalid assertion was also provided";
 				return false;
 			}
-			
+			// none of the tests failed, so this target SP works correctly
 			resultMessage = "The Service Provider correctly verified the validity of any assertions that are relied upon";
 			return true;
 		}

@@ -29,7 +29,6 @@ import org.opensaml.saml2.core.NameIDPolicy;
 import org.opensaml.saml2.core.RequestedAuthnContext;
 import org.opensaml.saml2.core.Response;
 import org.opensaml.saml2.core.Subject;
-import org.opensaml.saml2.core.SubjectConfirmation;
 import org.opensaml.saml2.metadata.AssertionConsumerService;
 import org.opensaml.saml2.metadata.AttributeConsumingService;
 import org.opensaml.saml2.metadata.ContactPerson;
@@ -405,7 +404,7 @@ public class SAML2Int extends SPTestSuite {
 			String requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getInstance().getAuthnRequest());
 			
 			// create the minimally required Response
-			Response response = createMinimalWebSSOResponse();			
+			Response response = createMinimalWebSSOResponse(requestID);			
 			// add attributes and sign the assertions in the response
 			List<Assertion> assertionsTransient = response.getAssertions();
 			
@@ -416,17 +415,10 @@ public class SAML2Int extends SPTestSuite {
 				nameid.setFormat(NameID.TRANSIENT);
 				assertion.getSubject().setNameID(nameid);
 
-				// set the InReplyTo attribute on the subjectconfirmationdata of all subjectconfirmations
-				List<SubjectConfirmation> subconfs = assertion.getSubject().getSubjectConfirmations();
-				for (SubjectConfirmation subconf : subconfs){
-					subconf.getSubjectConfirmationData().setInResponseTo(requestID);
-				}
 				// add the attributes
 				addTargetSPAttributes(assertion);
 				SAMLUtil.sign(assertion, getX509Credentials(null));
 			}
-			// add the InReplyTo attribute to the Response as well
-			response.setInResponseTo(requestID);
 			// convert the Response to a String
 			String responseTransient = SAMLUtil.toXML(response);
 			
@@ -534,7 +526,7 @@ public class SAML2Int extends SPTestSuite {
 			/**
 			 * Create the Response we wish the mock IdP to return
 			 */
-			Response response = createMinimalWebSSOResponse();
+			Response response = createMinimalWebSSOResponse(null);
 			// add attributes and sign the assertions in the response
 			List<Assertion> assertions = response.getAssertions();
 			for (Assertion assertion : assertions){

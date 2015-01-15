@@ -150,9 +150,6 @@ public class SPTestRunner extends TestRunner {
 						loadConfig(command.getOptionValue("config"));
 					}
 
-					// initialize the mocked server
-					initMockServer();
-
 					// load the requested test case(s)
 					String testcaseName = command.getOptionValue("testcase");
 
@@ -203,6 +200,20 @@ public class SPTestRunner extends TestRunner {
 		} catch (Exception e) {
 			logger.error("Could not start the mock server", e);
 		}		
+	}
+	
+	/**
+	 * Kill the mock server
+	 */
+	@Override
+	public void killMockServer() {
+		// start the mock IdP
+		try {
+			mockServer.stop();
+		} catch (Exception e) {
+			logger.error("Could not kill the mock server", e);
+		}
+		
 	}
 
 	@Override

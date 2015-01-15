@@ -140,6 +140,7 @@ public abstract class SPTestSuite implements TestSuite {
 		keyInfoGeneratorFactory.setEmitEntityCertificate(true);
 		KeyInfoGenerator keyInfoGenerator = keyInfoGeneratorFactory.newInstance();
 		try {
+			// TODO add a command-line parameter that lets you configure a path to the X509 credentials
 			keydescriptor.setKeyInfo(keyInfoGenerator.generate(getX509Credentials(null)));
 		} catch (org.opensaml.xml.security.SecurityException e) {
 			e.printStackTrace();
@@ -294,13 +295,14 @@ public abstract class SPTestSuite implements TestSuite {
 	 * - use the Password authentication context
 	 * - set all IssueInstant attributes to the current date and time
 	 * - set the Recipient to the default ACS from the SP metadata
+	 * - if requestID is provided, the InResponseTo attribute is set on SubjectConfirmationData and Response
 	 * 
 	 * You can edit the Response as you see fit to customize it to your needs
 	 * 
+	 * @param requestID is the ID of the AuthnRequest that the response is intended to answer, it should be null if the response is IdP-initiated.
 	 * @return the minimal SAML Response
 	 */
-	public Response createMinimalWebSSOResponse(){
-		SPConfiguration sp = SPTestRunner.getInstance().getSPConfig();
+	public Response createMinimalWebSSOResponse(String requestID){
 		try {
 			DefaultBootstrap.bootstrap();
 		} catch (ConfigurationException e) {
@@ -308,10 +310,35 @@ public abstract class SPTestSuite implements TestSuite {
 		}
 		XMLObjectBuilderFactory builderfac = Configuration.getBuilderFactory();
 		Response response = (Response) builderfac.getBuilder(Response.DEFAULT_ELEMENT_NAME).buildObject(Response.DEFAULT_ELEMENT_NAME);
-		Assertion assertion = (Assertion) builderfac.getBuilder(Assertion.DEFAULT_ELEMENT_NAME).buildObject(Assertion.DEFAULT_ELEMENT_NAME);
-		Issuer issuer = (Issuer) builderfac.getBuilder(Issuer.DEFAULT_ELEMENT_NAME).buildObject(Issuer.DEFAULT_ELEMENT_NAME);
 		Status status = (Status) builderfac.getBuilder(Status.DEFAULT_ELEMENT_NAME).buildObject(Status.DEFAULT_ELEMENT_NAME);
 		StatusCode statuscode = (StatusCode) builderfac.getBuilder(StatusCode.DEFAULT_ELEMENT_NAME).buildObject(StatusCode.DEFAULT_ELEMENT_NAME);
+
+		// create status for Response
+		statuscode.setValue(StatusCode.SUCCESS_URI);
+		status.setStatusCode(statuscode);
+		// create the assertion
+		Assertion assertion = createMinimalAssertion(requestID);
+		// add created elements to Response
+		response.setID("_"+UUID.randomUUID().toString());
+		response.setIssueInstant(DateTime.now());
+		response.getAssertions().add(assertion);
+		response.setStatus(status);
+		if(requestID != null){
+			response.setInResponseTo(requestID);
+		}
+		return response;
+	}
+	
+	public Assertion createMinimalAssertion(String requestID){
+		SPConfiguration sp = SPTestRunner.getInstance().getSPConfig();
+		try {
+			DefaultBootstrap.bootstrap();
+		} catch (ConfigurationException e) {
+			logger.error("Could not bootstrap OpenSAML", e);
+		}
+		XMLObjectBuilderFactory builderfac = Configuration.getBuilderFactory();
+		Assertion assertion = (Assertion) builderfac.getBuilder(Assertion.DEFAULT_ELEMENT_NAME).buildObject(Assertion.DEFAULT_ELEMENT_NAME);
+		Issuer issuer = (Issuer) builderfac.getBuilder(Issuer.DEFAULT_ELEMENT_NAME).buildObject(Issuer.DEFAULT_ELEMENT_NAME);
 		Subject subject = (Subject) builderfac.getBuilder(Subject.DEFAULT_ELEMENT_NAME).buildObject(Subject.DEFAULT_ELEMENT_NAME);
 		SubjectConfirmation subjectconf = (SubjectConfirmation) builderfac.getBuilder(SubjectConfirmation.DEFAULT_ELEMENT_NAME).buildObject(SubjectConfirmation.DEFAULT_ELEMENT_NAME);
 		SubjectConfirmationData subjectconfdata = (SubjectConfirmationData) builderfac.getBuilder(SubjectConfirmationData.DEFAULT_ELEMENT_NAME).buildObject(SubjectConfirmationData.DEFAULT_ELEMENT_NAME);
@@ -322,14 +349,14 @@ public abstract class SPTestSuite implements TestSuite {
 		AuthnContext authncontext = (AuthnContext) builderfac.getBuilder(AuthnContext.DEFAULT_ELEMENT_NAME).buildObject(AuthnContext.DEFAULT_ELEMENT_NAME);
 		AuthnContextClassRef authncontextclassref = (AuthnContextClassRef) builderfac.getBuilder(AuthnContextClassRef.DEFAULT_ELEMENT_NAME).buildObject(AuthnContextClassRef.DEFAULT_ELEMENT_NAME);
 
-		// create status for Response
-		statuscode.setValue(StatusCode.SUCCESS_URI);
-		status.setStatusCode(statuscode);
 		// create Issuer for Assertion 
 		issuer.setValue(getmockIdPEntityID());
 		// create Subject for Assertion
 		subjectconfdata.setRecipient(sp.getApplicableACS(null).getAttributes().getNamedItem(AssertionConsumerService.LOCATION_ATTRIB_NAME).getNodeValue());
 		subjectconfdata.setNotOnOrAfter(DateTime.now().plusMinutes(5));
+		if (requestID != null){
+			subjectconfdata.setInResponseTo(requestID);
+		}
 		subjectconf.setSubjectConfirmationData(subjectconfdata);
 		subjectconf.setMethod(SubjectConfirmation.METHOD_BEARER);
 		subject.getSubjectConfirmations().add(subjectconf);
@@ -349,14 +376,8 @@ public abstract class SPTestSuite implements TestSuite {
 		assertion.setSubject(subject);
 		assertion.setConditions(conditions);
 		assertion.getAuthnStatements().add(authnstatement);
-		
-		// add created elements to Response
-		response.setID("_"+UUID.randomUUID().toString());
-		response.setIssueInstant(DateTime.now());
-		response.getAssertions().add(assertion);
-		response.setStatus(status);
-		
-		return response;
+		// return the assertion
+		return assertion;
 	}
 	
 	/**
