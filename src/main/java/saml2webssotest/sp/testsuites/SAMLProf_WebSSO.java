@@ -38,11 +38,11 @@ import saml2webssotest.common.StandardNames;
 import saml2webssotest.sp.SPConfiguration;
 import saml2webssotest.sp.SPTestRunner;
 
-public class SAML2Prof_WebSSO extends SPTestSuite {
+public class SAMLProf_WebSSO extends SPTestSuite {
 	/**
 	 * Logger for this class
 	 */
-	private final Logger logger = LoggerFactory.getLogger(SAML2Prof_WebSSO.class);
+	private final Logger logger = LoggerFactory.getLogger(SAMLProf_WebSSO.class);
 
 	/**
 	 * Tests the following part of the SAML 2.0 Web Browser SSO Profile:
@@ -1216,7 +1216,7 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 	 * - a Response that has one Assertion that has an invalid AudienceRestriction element
 	 * 		- This should fail to log in
 	 * - A Response that has two Assertions, one invalid and one valid, both containing sufficient data for authentication (i.e. SubjectConfirmation and AuthnStatement elements)
-	 * 		- This should log in correctly
+	 * 		- This should log in correctly (disabled for now, might be too extensive for testing purposes)
 	 * 
 	 * @author RiaasM
 	 */
@@ -1410,7 +1410,7 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			 * Try to log in with two Assertions, one invalid and one valid, both containing sufficient data for authentication (i.e. SubjectConfirmation and AuthnStatement elements)
 			 */
 
-			browser = SPTestRunner.getInstance().getNewBrowser();
+			/*browser = SPTestRunner.getInstance().getNewBrowser();
 			requestID = null;
 			response = null;
 			assertions = null;
@@ -1453,7 +1453,7 @@ public class SAML2Prof_WebSSO extends SPTestSuite {
 			else if (!loginInvalidAndValidAssertions) {
 				resultMessage = "The Service Provider did not use the available, valid assertion to authenticate when an invalid assertion was also provided";
 				return false;
-			}
+			}*/
 			// none of the tests failed, so this target SP works correctly
 			resultMessage = "The Service Provider correctly verified the validity of any assertions that are relied upon";
 			return true;
