@@ -6,15 +6,22 @@ import java.net.URL;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.security.cert.Certificate;
+import java.security.cert.X509Certificate;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLHandshakeException;
 
 import org.apache.commons.cli.BasicParser;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Options;
+import org.apache.commons.cli.ParseException;
 import org.apache.log4j.BasicConfigurator;
 import org.apache.log4j.PropertyConfigurator;
 import org.opensaml.common.xml.SAMLConstants;
@@ -26,6 +33,7 @@ import org.w3c.dom.Node;
 
 import com.gargoylesoftware.htmlunit.FailingHttpStatusCodeException;
 import com.gargoylesoftware.htmlunit.HttpMethod;
+import com.gargoylesoftware.htmlunit.Page;
 import com.gargoylesoftware.htmlunit.WebClient;
 import com.gargoylesoftware.htmlunit.WebRequest;
 import com.gargoylesoftware.htmlunit.html.HtmlPage;
@@ -64,10 +72,6 @@ public class SPTestRunner extends TestRunner {
 	 */
 	private final Logger logger = LoggerFactory.getLogger(SPTestRunner.class);
 	/**
-	 * The test suite that is being run
-	 */
-	private SPTestSuite testsuite;
-	/**
 	 * Contains the SP configuration
 	 */
 	private SPConfiguration spConfig;
@@ -102,11 +106,11 @@ public class SPTestRunner extends TestRunner {
 			// define the command-line options
 			Options options = new Options();
 			options.addOption("h", "help", false, "Print this help message");
-			options.addOption("i", "insecure", false,"Do not verify HTTPS server certificates");
 			options.addOption("c", "config", true,"The name of the properties file containing the configuration of the target SAML entity");
 			options.addOption("l", "listTestcases", false,"List all the test cases");
 			options.addOption("L", "listTestsuites", false,"List all the test suites");
 			options.addOption("m", "metadata", false,"Display the mock SAML entity's metadata");
+			options.addOption("r", "recursive", false,"Run the test suites that your test suite depends on as well (ignored if \"-t, --testcase\" is used)");
 			options.addOption("T", "testsuite", true,"Specifies the test suite from which you wish to run a test case");
 			options.addOption("t","testcase",true,"The name of the test case you wish to run. If omitted, all test cases from the test suite are run");
 
@@ -144,6 +148,14 @@ public class SPTestRunner extends TestRunner {
 						outputMockedMetadata(testsuite);
 						System.exit(0);
 					}
+					
+					// store setting for running depending test suites
+					if (command.hasOption("recursive")){
+						recursive = true;
+					}
+					else{
+						recursive = false;
+					}
 
 					// load target SP config
 					if (command.hasOption("config")) {
@@ -151,34 +163,31 @@ public class SPTestRunner extends TestRunner {
 					}
 
 					// load the requested test case(s)
-					String testcaseName = command.getOptionValue("testcase");
-
-					// get the test case(s) we want to run
-					testcases = getTestCases(testsuite, testcaseName);
+					testcaseName = command.getOptionValue("testcase");
 
 				} else {
 					logger.error("Provided class was not a TestSuite");
 				}
 			}
 		} catch (ClassNotFoundException e) {
-			// test suite or case could not be found
-			if (testsuite == null)
-				logger.error("Test suite could not be found", e);
-			else
-				logger.error("Test case could not be found", e);
-			// testresults.add(new TestResult(boolean.CRITICAL, ""));
+			logger.error("Test suite could not be found", e);
 		} catch (ClassCastException e) {
 			logger.error("The test suite or case was not an instance of TestSuite", e);
 		} catch (JsonSyntaxException jsonExc) {
 			logger.error("The JSON configuration file did not have the correct syntax", jsonExc);
-		} catch (Exception e) {
-			logger.error("The test(s) could not be run", e);
+		} catch (InstantiationException e) {
+			logger.error("Could not create an instance of the Test Suite", e);
+		} catch (IllegalAccessException e) {
+			logger.error("The Test Suite could not be accessed", e);
+		} catch (ParseException e) {
+			logger.error("The command-line arguments could not be parsed correctly", e);
 		}
 	}
 
 	public static void main(String[] args) {
 		instance = new SPTestRunner(args);
-		instance.run();
+		instance.runTestSuite(instance.getMainTestSuite());
+		instance.outputTestResults();
 	}
 	
 	public static SPTestRunner getInstance(){
@@ -209,7 +218,9 @@ public class SPTestRunner extends TestRunner {
 	public void killMockServer() {
 		// start the mock IdP
 		try {
-			mockServer.stop();
+			if (mockServer != null && mockServer.isStarted()) {
+				mockServer.stop();
+			}
 		} catch (Exception e) {
 			logger.error("Could not kill the mock server", e);
 		}
@@ -330,7 +341,23 @@ public class SPTestRunner extends TestRunner {
 		try {
 			if (spInitiated) {
 				// retrieve the login page, thereby sending the AuthnRequest to the mock IdP
-				interactWithPage(browser.getPage(spConfig.getStartPage()), spConfig.getPreLoginInteractions());
+				Page startPage = null;
+				try{
+					startPage = browser.getPage(spConfig.getStartPage());
+				}
+				catch(SSLHandshakeException badSSL){
+					// log the problem with the insecure SSL
+					logger.warn("The start page of the target SP uses invalid SSL, retrying without validating SSL certificates");
+					// the startpage has insecure SSL so get it without validating
+					
+					browser.getOptions().setUseInsecureSSL(true);
+					// reset browser to apply setting
+					browser.closeAllWindows();
+					startPage = browser.getPage(spConfig.getStartPage());
+					// reset insecure SSL option for future use
+					browser.getOptions().setUseInsecureSSL(false);
+				}
+				interactWithPage(startPage, spConfig.getPreLoginInteractions());
 				// check if the saml request has correctly been retrieved by the mock IdP
 				if (samlRequest == null || samlRequest.isEmpty()) {
 					logger.error("Could not retrieve the SAML request after SP-initiated login attempt");
@@ -361,6 +388,9 @@ public class SPTestRunner extends TestRunner {
 	 * 
 	 * @param browser is the browser in which we should complete our login attempt. Note
 	 * that this must be the same browser as the one in which we initiated our login attempt
+	 * @param acs is the Node element that represent the AssertionConsumerService to which the 
+	 * the SAML Response should be sent. This is the Node that is returned when we initiate
+	 * our login attempt.
 	 * @param response is the SAML Response that should be returned by the mock IdP
 	 * @return a Boolean object with value true if the login attempt was successful, false if 
 	 * the login attempt failed and null if the login attempt could not be completed
@@ -393,7 +423,48 @@ public class SPTestRunner extends TestRunner {
 			logger.debug("Sending SAML Response to the SP");
 			logger.trace(response);
 			// send the SAML response to the SP
-			HtmlPage responsePage = browser.getPage(sentResponse);
+			HtmlPage responsePage;
+			try{
+				responsePage = browser.getPage(sentResponse);
+				// if an HTTPS URL was used, check if an X.509 v3 SSL certificate was used
+				// note that this check is not reached if the page used an invalid SSL certificate
+				if (applicableACSURL.getProtocol().equalsIgnoreCase("https")){
+					logger.trace("Checking SSL certificate version with a second connection to the URL: " + applicableACSURL.toString());
+					// connect to the URL to retrieve which cipher is actually used
+					HttpsURLConnection acsConn = (HttpsURLConnection) applicableACSURL.openConnection();
+					acsConn.connect();
+					Certificate[] certs = acsConn.getServerCertificates();
+					acsConn.disconnect();
+					for (Certificate cert : Arrays.asList(certs)){
+						if (cert instanceof X509Certificate){
+							X509Certificate x509cert = (X509Certificate) cert;
+							// check if the certificate is X.509 v3
+							if (x509cert.getVersion() != 2){
+								logger.warn("SAMLBind violation (3.1.2.1 p237-p238) - The target SP does not have an X.509 v3 SSL certificate on the ACS endpoint, instead it uses version " + x509cert.getVersion()+1 );
+								logger.warn("SAMLConform violation (5 p255-p256) - The target SP does not have an X.509 v3 SSL certificate on the ACS endpoint, instead it uses version " + x509cert.getVersion()+1 );
+							}
+						}
+						else{
+							logger.warn("SAMLBind violation (3.1.2.1 p237-p238) - The target SP has a non-X.509 SSL certificate on the ACS endpoint");
+							logger.warn("SAMLConform violation (5 p255-p256) - The target SP has a non-X.509 SSL certificate on the ACS endpoint");
+						}
+					}
+					// TODO test if this works
+				}
+				
+			}
+			catch(SSLHandshakeException badSSL){
+				// log the problem with the insecure SSL
+				logger.warn("SAMLBind violation (3.1.2.1 p238-p240) - The target SP does not have a valid SSL certificate on the ACS endpoint");
+				logger.warn("SAMLConform violation (5 p256-p257) - The target SP does not have a valid SSL certificate on the ACS endpoint");
+				// the startpage has insecure SSL so get it without validating
+				browser.getOptions().setUseInsecureSSL(true);
+				browser.closeAllWindows();
+				logger.debug("Retrying page retrieval with insecure SSL");
+				responsePage = browser.getPage(sentResponse);
+				// reset insecure SSL option for future use
+				browser.getOptions().setUseInsecureSSL(false);
+			}
 			
 			logger.trace("The received page:\n"+responsePage.getWebResponse().getContentAsString());
 			
@@ -410,7 +481,7 @@ public class SPTestRunner extends TestRunner {
 		} catch (FailingHttpStatusCodeException e){
 			logger.error("Could not retrieve browser page for the LoginTestCase", e);
 			return null;
-		} catch (IOException e) {
+		} catch (IOException e) {	
 			logger.error("Could not execute HTTP request for the LoginTestCase", e);
 			return null;
 		}
@@ -427,9 +498,6 @@ public class SPTestRunner extends TestRunner {
 		WebClient browser = new WebClient();
 		// configure the browser that will be used during testing
 		browser.getOptions().setRedirectEnabled(true);
-		if (command.hasOption("insecure")) {
-			browser.getOptions().setUseInsecureSSL(true);
-		}
 		return browser;
 	}
 

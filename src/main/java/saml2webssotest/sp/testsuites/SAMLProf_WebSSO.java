@@ -6,7 +6,9 @@ import java.net.URL;
 import java.security.GeneralSecurityException;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
+import java.util.ArrayList;
 import java.util.List;
+
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
@@ -35,6 +37,7 @@ import com.gargoylesoftware.htmlunit.html.HtmlPage;
 
 import saml2webssotest.common.SAMLUtil;
 import saml2webssotest.common.StandardNames;
+import saml2webssotest.common.TestSuite;
 import saml2webssotest.sp.SPConfiguration;
 import saml2webssotest.sp.SPTestRunner;
 
@@ -43,6 +46,12 @@ public class SAMLProf_WebSSO extends SPTestSuite {
 	 * Logger for this class
 	 */
 	private final Logger logger = LoggerFactory.getLogger(SAMLProf_WebSSO.class);
+
+	@Override
+	public List<TestSuite> getDependencies() {
+		ArrayList<TestSuite> dependencies = new ArrayList<TestSuite>();
+		return dependencies;
+	}
 
 	/**
 	 * Tests the following part of the SAML 2.0 Web Browser SSO Profile:

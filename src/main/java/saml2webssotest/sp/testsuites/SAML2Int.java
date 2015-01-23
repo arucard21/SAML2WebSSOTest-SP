@@ -56,6 +56,7 @@ import saml2webssotest.common.SAMLAttribute;
 import saml2webssotest.common.SAMLUtil;
 import saml2webssotest.common.StandardNames;
 import saml2webssotest.common.StringPair;
+import saml2webssotest.common.TestSuite;
 import saml2webssotest.sp.SPConfiguration;
 import saml2webssotest.sp.SPTestRunner;
 
@@ -65,6 +66,13 @@ public class SAML2Int extends SPTestSuite {
 	 * Logger for this class
 	 */
 	private final Logger logger = LoggerFactory.getLogger(SAML2Int.class);
+
+	@Override
+	public List<TestSuite> getDependencies() {
+		ArrayList<TestSuite> dependencies = new ArrayList<TestSuite>();
+		dependencies.add(new SAMLProf_WebSSO());
+		return dependencies;
+	}
 
 	/**
 	 *  Tests the following part of the SAML2Int Profile:
