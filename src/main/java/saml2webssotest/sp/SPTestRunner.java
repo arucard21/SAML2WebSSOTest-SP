@@ -439,9 +439,9 @@ public class SPTestRunner extends TestRunner {
 						if (cert instanceof X509Certificate){
 							X509Certificate x509cert = (X509Certificate) cert;
 							// check if the certificate is X.509 v3
-							if (x509cert.getVersion() != 2){
-								logger.warn("SAMLBind violation (3.1.2.1 p237-p238) - The target SP does not have an X.509 v3 SSL certificate on the ACS endpoint, instead it uses version " + x509cert.getVersion()+1 );
-								logger.warn("SAMLConform violation (5 p255-p256) - The target SP does not have an X.509 v3 SSL certificate on the ACS endpoint, instead it uses version " + x509cert.getVersion()+1 );
+							if (x509cert.getVersion() != 3){
+								logger.warn("SAMLBind violation (3.1.2.1 p237-p238) - The target SP does not have an X.509 v3 SSL certificate on the ACS endpoint, instead it uses version " + x509cert.getVersion() );
+								logger.warn("SAMLConform violation (5 p255-p256) - The target SP does not have an X.509 v3 SSL certificate on the ACS endpoint, instead it uses version " + x509cert.getVersion() );
 							}
 						}
 						else{
@@ -449,7 +449,6 @@ public class SPTestRunner extends TestRunner {
 							logger.warn("SAMLConform violation (5 p255-p256) - The target SP has a non-X.509 SSL certificate on the ACS endpoint");
 						}
 					}
-					// TODO test if this works
 				}
 				
 			}
