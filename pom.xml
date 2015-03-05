@@ -3,7 +3,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>SAML2WebSSOTest-SP</groupId>
 	<artifactId>SAML2WebSSOTest-SP</artifactId>
-	<version>1.2.0</version>
+	<version>1.2.1</version>
 	<properties>
 		<used.java.home>${env.JAVA_HOME}</used.java.home> <!-- ${path.separator} -->
 	</properties>
@@ -60,7 +60,7 @@
 		<dependency>
 			<groupId>SAML2WebSSOTest-Common</groupId>
 			<artifactId>SAML2WebSSOTest-Common</artifactId>
-			<version>1.2.0</version>
+			<version>1.2.1</version>
 		</dependency>
 		<dependency>
 			<groupId>commons-cli</groupId>

@@ -1,7 +1,20 @@
 package saml2webssotest.sp.mockIdPHandlers;
 
 import java.io.IOException;
+import java.net.URL;
+import java.net.URLConnection;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
+import java.security.cert.Certificate;
+import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
+import java.util.Arrays;
 
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLHandshakeException;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
@@ -26,6 +39,7 @@ public class SamlWebSSOHandler extends AbstractHandler{
 	private String samlRequest;
 	private String requestID;
 	private StringPair applicableACS;
+	private boolean returnArtifact;
 	
 	private final Logger logger = LoggerFactory.getLogger(SamlWebSSOHandler.class);
 	/**
@@ -60,6 +74,7 @@ public class SamlWebSSOHandler extends AbstractHandler{
             }
             else if (request.getParameter(StandardNames.URLPARAM_SAMLARTIFACT) != null){
             	SPTestRunner.getInstance().setSamlRequestBinding(SAMLConstants.SAML2_ARTIFACT_BINDING_URI);
+            	returnArtifact = true;
                 // TODO: implement for BINDING_HTTP_ARTIFACT
             }
             else{
@@ -83,6 +98,7 @@ public class SamlWebSSOHandler extends AbstractHandler{
             }
             else if (request.getParameter(StandardNames.URLPARAM_SAMLARTIFACT) != null){
             	SPTestRunner.getInstance().setSamlRequestBinding(SAMLConstants.SAML2_ARTIFACT_BINDING_URI);
+            	returnArtifact = true;
                 // TODO: implement for BINDING_HTTP_ARTIFACT
             }
             else{
@@ -92,27 +108,125 @@ public class SamlWebSSOHandler extends AbstractHandler{
         else{
         	logger.error("SAML Request sent using an unknown binding (with neither GET nor POST)");
         }
-        // get the SAML Response that should be sent and replace any request variables (e.g. [[requestID]])  that have been placed in it
-        String samlResponse = replaceReqVars(SPTestRunner.getInstance().getSamlResponse());	
-
-        // set page to return POST data
-    	response.setContentType("text/html");
-    	// make page redirect back to SP's ACS
-		response.setStatus(HttpServletResponse.SC_OK);
-		// log the response
-		logger.debug("Sending a Response with the mock IdP");
-		logger.trace(samlResponse);
-		// add the SAML Response as post data
-		String responsePage = "<html>"
-				+ "<body onLoad=\"document.sendSAMLResponse.submit()\">"
-						+ "<form action=\""+applicableACS.getName()+"\" method=\"post\" name=\"sendSAMLResponse\">"
-								+ "<input type=\"hidden\" name=\""+StandardNames.URLPARAM_SAMLRESPONSE_POST+"\" value=\""+SAMLUtil.encodeSamlMessageForPost(samlResponse)+"\"/>"
-						+ "</form>"
-				+ "</body>"
-				+ "</html>";
-		response.getWriter().print(responsePage);
-		// declare that we're done processing the request
-		request.setHandled(true);
+		if (applicableACS != null) {
+			// connect to the base URL of the applicable ACS so we don't interfere with the login process
+			URL acs = new URL(applicableACS.getName());
+			URL baseACS = new URL(acs.getProtocol(), acs.getHost(), acs.getPort(), "");
+			URLConnection acsURLConn =  baseACS.openConnection();
+			logger.debug("Checking SSL certificate version with a second connection to the URL: " + baseACS.toString());
+			// check if the connection is an HTTPS connection
+			if (acsURLConn instanceof HttpsURLConnection){
+				HttpsURLConnection acsConn = (HttpsURLConnection) acsURLConn;
+				try{
+					// try to connect to the root of the ACS URL, while verifying the SSL certificates
+					acsConn.connect();
+				} catch(SSLHandshakeException badSSL){
+					// disconnect from the URL before reconfiguring the connecting to trust all SSL certificates
+					acsConn.disconnect();
+					// Create a trust manager that does not validate certificate chains since we are not
+					// trying to test the certificate validity
+					TrustManager[] trustAllCerts = new TrustManager[] {
+							new X509TrustManager() {
+								@Override
+								public X509Certificate[] getAcceptedIssuers() {return new X509Certificate[0];}
+								@Override
+								public void checkServerTrusted(X509Certificate[] chain, String authType) throws CertificateException {}
+								@Override
+								public void checkClientTrusted(X509Certificate[] chain, String authType) throws CertificateException {}
+							}
+					};
+					// Install the all-trusting trust manager on the HttpsURLConnection
+					try {
+					    SSLContext sc = SSLContext.getInstance("SSL"); 
+					    sc.init(null, trustAllCerts, new java.security.SecureRandom()); 
+					    acsConn.setSSLSocketFactory(sc.getSocketFactory());
+					} catch (NoSuchAlgorithmException e) {
+						logger.error("The SSL protocol was not supported in the SSLContext", e);
+					} catch (KeyManagementException e){
+						logger.error("Could not initialize the SSLContext", e);
+					}
+					// connect again, while trusting all certificates
+					try{
+						acsConn.connect();
+					} catch (IOException e){
+						logger.error("Could not connect to target SP, even without verifying SSL certificates", e);
+					}
+				}
+    			Certificate[] certs = acsConn.getServerCertificates();
+    			acsConn.disconnect();
+    			for (Certificate cert : Arrays.asList(certs)) {
+    				if (cert instanceof X509Certificate) {
+    					X509Certificate x509cert = (X509Certificate) cert;
+    					// check if the certificate is X.509 v3
+    					if (x509cert.getVersion() != 3) {
+    						logger.error("SAMLBind violation (Section 3.1.2.1, lines 237-238) - The target SP does not have an X.509 v3 SSL certificate on the ACS endpoint, instead it uses version "
+    								+ x509cert.getVersion());
+    						logger.error("SAMLConf violation (Section 5, lines 255-256) - The target SP does not have an X.509 v3 SSL certificate on the ACS endpoint, instead it uses version "
+    								+ x509cert.getVersion());
+    					}
+    				}
+    				else {
+    					logger.error("SAMLBind violation (Section 3.1.2.1, lines 237-238) - The target SP has a non-X.509 SSL certificate on the ACS endpoint");
+    					logger.error("SAMLConf violation (Section 5, lines 255-256) - The target SP has a non-X.509 SSL certificate on the ACS endpoint");
+    				}
+    			}
+			}
+		}
+        if (returnArtifact){
+    		/**
+    		 * Artifact binding requested, which is not yet supported
+    		 * TODO: add support for artifact binding
+    		 */
+    		// set page to return POST data
+    		response.setContentType("text/html");
+    		// make page redirect back to SP's ACS
+    		response.setStatus(HttpServletResponse.SC_OK);
+    		// log the response
+    		logger.error("Can not send Response because it is requested with the unsupported Artifact binding");
+    		// add the SAML Response as post data
+    		String responsePage = "<html>"
+    				+ "<body"
+    				+ "SAML2WebSSOTest does not yet support the Artifact binding"
+    				+ "</body>"
+    				+ "</html>";
+    		response.getWriter().print(responsePage);
+    		// declare that we're done processing the request
+    		request.setHandled(true);
+        }
+        else{
+        	String relayStateInput = "";
+        	// retrieve the RelayState, if provided (this will always be either a GET or POST variable called RelayState)
+        	String relaystate = request.getParameter(StandardNames.URLPARAM_RELAYSTATE);
+        	if(relaystate != null && !relaystate.isEmpty()){
+        		// create the form input element that will be used to return the RelayState to the target SP
+        		relayStateInput = "<input type=\"hidden\" name=\""+StandardNames.URLPARAM_RELAYSTATE+"\" value=\""+relaystate+"\"/>";
+        		// Make sure the RelayState does not exceed 80 bytes in size
+        		if (relaystate.getBytes().length > 80 ){
+        			logger.error("SAMLBind violation (Section 3.4.3, lines 545-547) - The target SP has provided a RelayState paramater which exceeds 80 bytes in size, instead its size (in bytes) is "+ relaystate.getBytes().length);
+        		}
+        	}
+        	// get the SAML Response that should be sent and replace any request variables (e.g. [[requestID]])  that have been placed in it
+        	String samlResponse = replaceReqVars(SPTestRunner.getInstance().getSamlResponse());	
+        	// set page to return POST data
+        	response.setContentType("text/html");
+        	// make page redirect back to SP's ACS
+        	response.setStatus(HttpServletResponse.SC_OK);
+        	// log the response
+        	logger.debug("Sending a Response with the mock IdP");
+        	logger.trace(samlResponse);
+        	// add the SAML Response as post data, including possibly the RelayState parameter 
+        	String responsePage = "<html>"
+        			+ "<body onLoad=\"document.sendSAMLResponse.submit()\">"
+        			+ "<form action=\""+applicableACS.getName()+"\" method=\"post\" name=\"sendSAMLResponse\">"
+        			+ relayStateInput
+        			+ "<input type=\"hidden\" name=\""+StandardNames.URLPARAM_SAMLRESPONSE_POST+"\" value=\""+SAMLUtil.encodeSamlMessageForPost(samlResponse)+"\"/>"
+        			+ "</form>"
+        			+ "</body>"
+        			+ "</html>";
+        	response.getWriter().print(responsePage);
+        	// declare that we're done processing the request
+        	request.setHandled(true);
+        }
 	}
 	
 	/**
