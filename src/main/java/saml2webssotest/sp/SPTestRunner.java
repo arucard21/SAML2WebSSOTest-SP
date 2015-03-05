@@ -6,15 +6,11 @@ import java.net.URL;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.security.cert.Certificate;
-import java.security.cert.X509Certificate;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLHandshakeException;
 
 import org.apache.commons.cli.BasicParser;
@@ -24,21 +20,16 @@ import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 import org.apache.log4j.BasicConfigurator;
 import org.apache.log4j.PropertyConfigurator;
-import org.opensaml.common.xml.SAMLConstants;
-import org.opensaml.saml2.metadata.AssertionConsumerService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
-import org.w3c.dom.Node;
 
 import com.gargoylesoftware.htmlunit.FailingHttpStatusCodeException;
-import com.gargoylesoftware.htmlunit.HttpMethod;
 import com.gargoylesoftware.htmlunit.Page;
+import com.gargoylesoftware.htmlunit.ScriptException;
 import com.gargoylesoftware.htmlunit.WebClient;
-import com.gargoylesoftware.htmlunit.WebRequest;
 import com.gargoylesoftware.htmlunit.html.HtmlPage;
 import com.gargoylesoftware.htmlunit.util.Cookie;
-import com.gargoylesoftware.htmlunit.util.NameValuePair;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonIOException;
 import com.google.gson.JsonSyntaxException;
@@ -46,9 +37,7 @@ import com.google.gson.JsonSyntaxException;
 import saml2webssotest.common.Interaction;
 import saml2webssotest.common.InteractionDeserializer;
 import saml2webssotest.common.MetadataDeserializer;
-import saml2webssotest.common.StandardNames;
 import saml2webssotest.common.StringPair;
-import saml2webssotest.common.SAMLUtil;
 import saml2webssotest.common.TestRunner;
 import saml2webssotest.common.TestSuite.TestCase;
 import saml2webssotest.common.TestSuite.MetadataTestCase;
@@ -83,6 +72,20 @@ public class SPTestRunner extends TestRunner {
 	 * Contains the SAML binding that was recognized by the mock IdP
 	 */
 	private String samlRequestBinding;
+	/**
+	 * Contains the SAML Response that should be sent by the mock IdP
+	 */
+	private String samlResponse;
+	/**
+	 * Determines if the test runner is allowed to update signatures on SAML Response elements
+	 * (true by default, but might need to be disabled if you wish to test with invalid signatures)
+	 */
+	private boolean sigUpdateResponseAllowed = true;
+	/**
+	 * Determines if the test runner is allowed to update signatures on SAML Response elements
+	 * (true by default, but might need to be disabled if you wish to test with invalid signatures)
+	 */
+	private boolean sigUpdateAssertionAllowed = true;
 	/**
 	 * Contains the command-line options
 	 */
@@ -185,7 +188,12 @@ public class SPTestRunner extends TestRunner {
 	}
 
 	public static void main(String[] args) {
-		instance = new SPTestRunner(args);
+		if (instance == null){
+			instance = new SPTestRunner(args);
+		}
+		else{
+			System.out.println("SPTestRunner is already running, only one instance can be running at the same time");
+		}
 		instance.runTestSuite(instance.getMainTestSuite());
 		instance.outputTestResults();
 	}
@@ -287,7 +295,7 @@ public class SPTestRunner extends TestRunner {
 			// make the SP send the AuthnRequest by starting an SP-initiated login attempt
 			try {
 				WebClient browser = getNewBrowser();
-				initiateLoginAttempt(browser, true);
+				attemptLogin(browser, true);
 				browser = getNewBrowser();
 				
 				//TestRunnerUtil.interactWithPage(browser.getPage(spConfig.getStartPage()), spConfig.getPreLoginInteractions());
@@ -323,22 +331,22 @@ public class SPTestRunner extends TestRunner {
 	}
 
 	/**
-	 * Initiate a login attempt at the target SP.
+	 * Attempt to log in to the target SP.
 	 * 
-	 * This will initiate the login process by causing the target SP to send an AuthnRequest (if SP-initiated), storing the AuthnRequest
-	 * that was received by the mock IdP (if SP-initiated) and returning the ACS Node the mock IdP should use.
+	 * This will attempt to log in to the target SP, either SP-initiated or IdP-initiated, and
+	 * returns whether or not the attempt was successful.
 	 * 
 	 * @param browser
-	 *            is the browser in which to initiate the login attempts
+	 *            is the browser in which to attempt the login
 	 * @param spInitiated
-	 *            defines whether the login attempt should be SP-initiated
-	 * @return a Node representing the ACS to which the Response should be sent. Note that the returned Node may not be the actual Node in
-	 *         the metadata of the targetSP since it could have been created from the information in the request.
+	 *            defines whether the login attempt should be SP-initiated or not
+	 * @return true if the login attempt was successful, false if it was unsuccessful and null if
+	 * the login procedure could not be completed
 	 */
-	public Node initiateLoginAttempt(WebClient browser, boolean spInitiated){
-		Node applicableACS;
+	public Boolean attemptLogin(WebClient browser, boolean spInitiated){
 		// determine the ACS location and binding, depending on the received SAML Request
 		try {
+			HtmlPage responsePage;
 			if (spInitiated) {
 				// retrieve the login page, thereby sending the AuthnRequest to the mock IdP
 				Page startPage = null;
@@ -357,20 +365,38 @@ public class SPTestRunner extends TestRunner {
 					// reset insecure SSL option for future use
 					browser.getOptions().setUseInsecureSSL(false);
 				}
-				interactWithPage(startPage, spConfig.getPreLoginInteractions());
-				// check if the saml request has correctly been retrieved by the mock IdP
-				if (samlRequest == null || samlRequest.isEmpty()) {
-					logger.error("Could not retrieve the SAML request after SP-initiated login attempt");
-				}
-				applicableACS = spConfig.getApplicableACS(SAMLUtil.fromXML(samlRequest));
+				responsePage = interactWithPage(startPage, spConfig.getPreLoginInteractions());
 			}
 			else {
-				// go directly to the IdP page without an AuthnRequest (for idp-initiated authentication)
-				browser.getPage(testsuite.getMockServerURL().toString());
-				applicableACS = spConfig.getApplicableACS(null);
+				try{
+					// go directly to the IdP page without an AuthnRequest (for idp-initiated authentication)
+					responsePage = browser.getPage(testsuite.getMockServerURL().toString());
+				}
+				catch(Exception badSSL){
+					// log the problem with the insecure SSL
+					logger.warn("The start page of the target SP uses invalid SSL, retrying without validating SSL certificates");
+					// the startpage has insecure SSL so get it without validating
+					
+					browser.getOptions().setUseInsecureSSL(true);
+					// reset browser to apply setting
+					browser.closeAllWindows();
+					responsePage = browser.getPage(testsuite.getMockServerURL().toString());
+					// reset insecure SSL option for future use
+					browser.getOptions().setUseInsecureSSL(false);
+				}
 			}
-			return applicableACS;
-
+			// the login succeeded when all configured matches are found
+			if (checkLoginHTTPStatusCode(responsePage) 
+					&& checkLoginURL(responsePage) 
+					&& checkLoginContent(responsePage) 
+					&& checkLoginCookies(browser.getCookies(responsePage.getUrl()))) {
+				return new Boolean(true);
+			}
+			else{
+				return new Boolean(false);
+			}
+		} catch (ScriptException e){
+			logger.error("Could not correctly redirect back to target SP", e);
 		} catch (FailingHttpStatusCodeException e) {
 			logger.error("Could not retrieve browser page for the LoginTestCase", e);
 		} catch (MalformedURLException e) {
@@ -380,112 +406,6 @@ public class SPTestRunner extends TestRunner {
 		}
 		return null;
 	}
-	/**
-	 * Finish trying to log in to the target SP with the mock IdP returning the provided SAML Response.
-	 * 
-	 * Note that you should have first initiated the login attempt with initiateLogin() in order for
-	 * the mock IdP to know which ACS URL and binding should be used 
-	 * 
-	 * @param browser is the browser in which we should complete our login attempt. Note
-	 * that this must be the same browser as the one in which we initiated our login attempt
-	 * @param acs is the Node element that represent the AssertionConsumerService to which the 
-	 * the SAML Response should be sent. This is the Node that is returned when we initiate
-	 * our login attempt.
-	 * @param response is the SAML Response that should be returned by the mock IdP
-	 * @return a Boolean object with value true if the login attempt was successful, false if 
-	 * the login attempt failed and null if the login attempt could not be completed
-	 */
-	public Boolean completeLoginAttempt(WebClient browser, Node acs, String response){
-		// start login attempt with target SP
-		try {
-			URL applicableACSURL = new URL(acs.getAttributes().getNamedItem(AssertionConsumerService.LOCATION_ATTRIB_NAME).getNodeValue());
-			String applicableACSBinding = acs.getAttributes().getNamedItem(AssertionConsumerService.BINDING_ATTRIB_NAME).getNodeValue();
-			// create HTTP request to send the SAML response to the SP's ACS url
-			WebRequest sentResponse = new WebRequest(applicableACSURL, HttpMethod.POST);
-			ArrayList<NameValuePair> postParameters = new ArrayList<NameValuePair>();
-			NameValuePair samlresponse;
-			// set the SAML URL parameter according to the requested binding
-			if (applicableACSBinding.equalsIgnoreCase(SAMLConstants.SAML2_POST_BINDING_URI)){
-				samlresponse = new NameValuePair(StandardNames.URLPARAM_SAMLRESPONSE_POST, SAMLUtil.encodeSamlMessageForPost(response));
-			}
-			else if (applicableACSBinding.equalsIgnoreCase(SAMLConstants.SAML2_ARTIFACT_BINDING_URI)){
-				// TODO: support artifact binding
-				logger.debug("Response needs to be sent with Artifact binding, this is not yet supported");
-				return null;
-			}
-			else{
-				logger.error("An invalid binding was requested for sending the Response to the SP");
-				return null;
-			}
-			postParameters.add(samlresponse);
-			sentResponse.setRequestParameters(postParameters);
-			
-			logger.debug("Sending SAML Response to the SP");
-			logger.trace(response);
-			// send the SAML response to the SP
-			HtmlPage responsePage;
-			try{
-				responsePage = browser.getPage(sentResponse);
-				// if an HTTPS URL was used, check if an X.509 v3 SSL certificate was used
-				// note that this check is not reached if the page used an invalid SSL certificate
-				if (applicableACSURL.getProtocol().equalsIgnoreCase("https")){
-					logger.trace("Checking SSL certificate version with a second connection to the URL: " + applicableACSURL.toString());
-					// connect to the URL to retrieve which cipher is actually used
-					HttpsURLConnection acsConn = (HttpsURLConnection) applicableACSURL.openConnection();
-					acsConn.connect();
-					Certificate[] certs = acsConn.getServerCertificates();
-					acsConn.disconnect();
-					for (Certificate cert : Arrays.asList(certs)){
-						if (cert instanceof X509Certificate){
-							X509Certificate x509cert = (X509Certificate) cert;
-							// check if the certificate is X.509 v3
-							if (x509cert.getVersion() != 3){
-								logger.warn("SAMLBind violation (3.1.2.1 p237-p238) - The target SP does not have an X.509 v3 SSL certificate on the ACS endpoint, instead it uses version " + x509cert.getVersion() );
-								logger.warn("SAMLConform violation (5 p255-p256) - The target SP does not have an X.509 v3 SSL certificate on the ACS endpoint, instead it uses version " + x509cert.getVersion() );
-							}
-						}
-						else{
-							logger.warn("SAMLBind violation (3.1.2.1 p237-p238) - The target SP has a non-X.509 SSL certificate on the ACS endpoint");
-							logger.warn("SAMLConform violation (5 p255-p256) - The target SP has a non-X.509 SSL certificate on the ACS endpoint");
-						}
-					}
-				}
-				
-			}
-			catch(SSLHandshakeException badSSL){
-				// log the problem with the insecure SSL
-				logger.warn("SAMLBind violation (3.1.2.1 p238-p240) - The target SP does not have a valid SSL certificate on the ACS endpoint");
-				logger.warn("SAMLConform violation (5 p256-p257) - The target SP does not have a valid SSL certificate on the ACS endpoint");
-				// the startpage has insecure SSL so get it without validating
-				browser.getOptions().setUseInsecureSSL(true);
-				browser.closeAllWindows();
-				logger.debug("Retrying page retrieval with insecure SSL");
-				responsePage = browser.getPage(sentResponse);
-				// reset insecure SSL option for future use
-				browser.getOptions().setUseInsecureSSL(false);
-			}
-			
-			logger.trace("The received page:\n"+responsePage.getWebResponse().getContentAsString());
-			
-			// the login succeeded when all configured matches are found
-			if (checkLoginHTTPStatusCode(responsePage) 
-					&& checkLoginURL(responsePage) 
-					&& checkLoginContent(responsePage) 
-					&& checkLoginCookies(browser.getCookies(applicableACSURL))) {
-				return new Boolean(true);
-			}
-			else{
-				return new Boolean(false);
-			}
-		} catch (FailingHttpStatusCodeException e){
-			logger.error("Could not retrieve browser page for the LoginTestCase", e);
-			return null;
-		} catch (IOException e) {	
-			logger.error("Could not execute HTTP request for the LoginTestCase", e);
-			return null;
-		}
-	}
-	
 	/**
 	 * Retrieves a browser that can be used by the test runner. 
 	 * 
@@ -536,6 +456,29 @@ public class SPTestRunner extends TestRunner {
 		samlRequestBinding = binding;
 	}
 
+	/**
+	 * Set the SAML Response that should be sent to the SP
+	 * 
+	 * This is set from the test case, which determines what kind 
+	 * of response should be given by the mock IdP
+	 * 
+	 * @param response is the SAML Response
+	 */
+	public void setSamlResponse(String response) {
+		samlResponse = response;
+	}
+	
+	/**
+	 * Retrieve the SAML Response that should be sent to the SP
+	 * 
+	 * This is mainly used by the mock IdP to retrieve the response 
+	 * it should return
+	 * 
+	 * @return the SAML Response string
+	 */
+	public String getSamlResponse(){
+		return samlResponse;
+	}
 	/**
 	 * Retrieve the SPConfiguration object containing the target SP configuration info
 	 * 
@@ -658,5 +601,63 @@ public class SPTestRunner extends TestRunner {
 				return false;
 			}
 		}
+	}
+
+	/**
+	 * Check if the test runner is configured to allow updating signatures 
+	 * on SAML Response elements
+	 * 
+	 * @return whether the test runner is allowed to update the signature of 
+	 * changed Response elements to keep them valid (default: true) 
+	 */
+	public boolean isSigUpdateResponseAllowed() {
+		return sigUpdateResponseAllowed;
+	}
+
+	/**
+	 * Configure if the test runner is allowed to update signatures on SAML
+	 * Response elements.
+	 * 
+	 * When signed Response elements are changed in the test runner, usually by
+	 * filling in some values found in the AuthnRequest, the Response needs to 
+	 * have its signature updated in order for it to be valid. If your test 
+	 * requires you to have an invalid signature, you can use this method to 
+	 * prevent the test runner from updating the signature. Note that if the
+	 * Response element contains no placeholders, the element, including its
+	 * signature, will not be changed.
+	 * 
+	 * @param sigUpdateResponseAllowed is the boolean that determines if signature updates are allowed
+	 */
+	public void setSigUpdateResponseAllowed(boolean sigUpdateResponseAllowed) {
+		this.sigUpdateResponseAllowed = sigUpdateResponseAllowed;
+	}
+
+	/**
+	 * Check if the test runner is configured to allow updating signatures 
+	 * on SAML Assertion elements.  
+	 * 
+	 * @return whether the test runner is allowed to update the signature of 
+	 * changed Assertion elements to keep them valid (default: true)
+	 */
+	public boolean isSigUpdateAssertionAllowed() {
+		return sigUpdateAssertionAllowed;
+	}
+
+	/**
+	 * Configure if the test runner is allowed to update signatures on SAML
+	 * Assertion elements.
+	 * 
+	 * When signed Assertion elements are changed in the test runner, usually by
+	 * filling in some values found in the AuthnRequest, the Assertion needs to 
+	 * have its signature updated in order for it to be valid. If your test 
+	 * requires you to have an invalid signature, you can use this method to 
+	 * prevent the test runner from updating the signature. Note that if the
+	 * Assertion element contains no placeholders, the element, including its
+	 * signature, will not be changed.
+	 * 
+	 * @param sigUpdateAssertionAllowed the sigUpdateAssertionAllowed to set
+	 */
+	public void setSigUpdateAssertionAllowed(boolean sigUpdateAssertionAllowed) {
+		this.sigUpdateAssertionAllowed = sigUpdateAssertionAllowed;
 	}
 }

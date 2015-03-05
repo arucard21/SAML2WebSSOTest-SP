@@ -3,19 +3,15 @@ package saml2webssotest.sp;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.opensaml.Configuration;
-import org.opensaml.DefaultBootstrap;
 import org.opensaml.common.xml.SAMLConstants;
 import org.opensaml.saml2.core.AuthnRequest;
 import org.opensaml.saml2.metadata.AssertionConsumerService;
 import org.opensaml.saml2.metadata.IndexedEndpoint;
-import org.opensaml.xml.ConfigurationException;
 import org.w3c.dom.Document;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
 import saml2webssotest.common.Interaction;
-import saml2webssotest.common.SAMLUtil;
 import saml2webssotest.common.StringPair;
 import saml2webssotest.common.SAMLAttribute;
 
@@ -199,17 +195,17 @@ public class SPConfiguration {
 	/**
 	 * Retrieve the applicable AssertionConsumerService node from the SP metadata, taking into account the given AuthnRequest.
 	 * 
-	 * It checks if the request contains an ACS location or index and returns the corresponding ACS Node (a newly created one 
-	 * based on the information in the request or retrieved from the SP metadata, respectively), otherwise it just returns the 
-	 * default ACS node found in the SP metadata. 
+	 * It checks if the request contains an ACS location or index and returns the corresponding ACS information (as a StringPair),
+	 * otherwise it just returns the default ACS node found in the SP metadata. 
 	 * 
 	 * @param authnRequest is the AuthnRequest that was received (or null if IdP-initiated)
-	 * @return the applicable ACS node or null if no matching ACS could be found
+	 * @return the applicable ACS' location and binding as name and value of a StringPair or null if no matching ACS could be found
 	 */
-	public Node getApplicableACS(Document authnRequest) {
+	public StringPair getApplicableACS(Document authnRequest) {
 		Node authnRequestNode = null;
 		Node acsURL = null;
 		Node acsIndex = null;
+		Node returnACS = null;
 		// only retrieve the information from the authnrequest if it is actually provided
 		if (authnRequest != null){
 			// retrieve the ACS URL that was provided in the AuthnRequest
@@ -232,7 +228,8 @@ public class SPConfiguration {
 				for (Node acs : acsNodes) {
 					if (acs.getAttributes().getNamedItem(IndexedEndpoint.IS_DEFAULT_ATTRIB_NAME) != null) {
 						if(acs.getAttributes().getNamedItem(IndexedEndpoint.IS_DEFAULT_ATTRIB_NAME).getNodeValue().equalsIgnoreCase("true")){
-							return acs;
+							returnACS = acs;
+							break;
 						}
 					}
 					else{
@@ -244,7 +241,9 @@ public class SPConfiguration {
 					}
 				}
 				// no ACS found with isDefault set to true, so return the first ACS without isDefault attribute
-				return firstACS;
+				if (returnACS == null){
+					returnACS = firstACS;
+				}
 			}
 			else{
 				// ACS index found, so set location and binding accordingly
@@ -252,12 +251,22 @@ public class SPConfiguration {
 				// look for ACS with specified index
 				for (Node acs : acsNodes) {
 					int nodeIndex = Integer.parseInt(acs.getAttributes().getNamedItem(IndexedEndpoint.INDEX_ATTRIB_NAME).getNodeValue());
-					if (nodeIndex == acsIndexInt)
+					if (nodeIndex == acsIndexInt){
 						// return the location for the ACS with the requested index
-						return acs;
+						returnACS = acs;
+						break;
+					}
 				}
-				// the requested index could not be found
+			}
+			// return the ACS information found based on the SP metadata
+			if (returnACS == null){
+				// the requested acs could not be found
 				return null;
+			}
+			else{
+				String location = returnACS.getAttributes().getNamedItem(AssertionConsumerService.LOCATION_ATTRIB_NAME).getNodeValue();
+				String binding = returnACS.getAttributes().getNamedItem(AssertionConsumerService.BINDING_ATTRIB_NAME).getNodeValue();
+				return new StringPair(location, binding);
 			}
 		}
 		else{
@@ -269,25 +278,8 @@ public class SPConfiguration {
 			
 			// found ACS location in request, must also have a binding then
 			Node acsBinding = authnRequestNode.getAttributes().getNamedItem(AuthnRequest.PROTOCOL_BINDING_ATTRIB_NAME);
-			
-			// create a new ACS node with the given location and binding
-			try {
-				DefaultBootstrap.bootstrap();
-			} catch (ConfigurationException e) {
-				// could not create the ACS node
-				return null;
-			}
-
-			AssertionConsumerService acsObj =  (AssertionConsumerService) Configuration.getBuilderFactory()
-					.getBuilder(AssertionConsumerService.DEFAULT_ELEMENT_NAME)
-					.buildObject(AssertionConsumerService.DEFAULT_ELEMENT_NAME);
-
-			acsObj.setLocation(acsURL.getNodeValue());
-			acsObj.setBinding(acsBinding.getNodeValue());
-			// use max unsignedShort value so it is less likely to use an index that is already in use (but still uses a valid value)
-			acsObj.setIndex(new Integer(65535));
-			// return the ACS as a Document (converting the SAMLObject to a String and then from String to a Document)
-			return SAMLUtil.fromXML(SAMLUtil.toXML(acsObj)).getElementsByTagNameNS(SAMLConstants.SAML20MD_NS, AssertionConsumerService.DEFAULT_ELEMENT_LOCAL_NAME).item(0);
+			// return the ACS information found based on the request 
+			return new StringPair(acsURL.getNodeValue(), acsBinding.getNodeValue());
 		}
 	}
 }

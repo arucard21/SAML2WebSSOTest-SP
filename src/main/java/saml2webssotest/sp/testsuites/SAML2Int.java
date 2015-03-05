@@ -400,19 +400,10 @@ public class SAML2Int extends SPTestSuite {
 			// get a browser to test in
 			WebClient browser = SPTestRunner.getInstance().getNewBrowser();
 			/**
-			 * Initiate a login attempt (SP-initiated)
-			 */
-			Node acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, true);
-			
-			/**
 			 * Create the Response we wish the mock IdP to return 
 			 */
-			
-			// retrieve the request ID from the SAML Request
-			String requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getInstance().getAuthnRequest());
-			
-			// create the minimally required Response
-			Response response = createMinimalWebSSOResponse(requestID);			
+			// create the minimally required Response with requestID placeholder
+			Response response = createMinimalWebSSOResponse(PLACEHOLDER_REQUESTID, PLACEHOLDER_ACSURL);
 			// add attributes and sign the assertions in the response
 			List<Assertion> assertionsTransient = response.getAssertions();
 			
@@ -427,13 +418,19 @@ public class SAML2Int extends SPTestSuite {
 				addTargetSPAttributes(assertion);
 				SAMLUtil.sign(assertion, getX509Credentials(null));
 			}
+			// add Destination attribute (mandatory for signed Responses) 
+			// with a placeholder for the ACS URL which is the intended value
+			response.setDestination(PLACEHOLDER_ACSURL);
 			// convert the Response to a String
 			String responseTransient = SAMLUtil.toXML(response);
+			// store the response in the test runner so the mock IdP can use it
+			SPTestRunner.getInstance().setSamlResponse(responseTransient);
 			
 			/**
-			 * Complete the login attempt
+			 * Attempt to log in
 			 */
-			Boolean loginTransient = SPTestRunner.getInstance().completeLoginAttempt(browser, acs, responseTransient);
+			Boolean loginTransient = SPTestRunner.getInstance().attemptLogin(browser, true);
+			SPTestRunner.getInstance().setSamlResponse(null);
 			
 			/**
 			 * Reset the browser so we can try another login attempt
@@ -441,32 +438,36 @@ public class SAML2Int extends SPTestSuite {
 			browser = SPTestRunner.getInstance().getNewBrowser();
 
 			/**
-			 * Initiate the login attempt again
-			 */
-			acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, true);
-			// retrieve the new request ID
-			requestID = SAMLUtil.getSamlMessageID(SPTestRunner.getInstance().getAuthnRequest());
-			
-			/**
 			 * Create the Response we wish the mock IdP to return this time
 			 */
-						
-			// Change the NameID Format of the previously create Response from transient to persistent
-			List<Assertion> assertionsPersistent = response.getAssertions();
+			// create the minimally required persistent Response with requestID placeholder
+			Response response2 = createMinimalWebSSOResponse(PLACEHOLDER_REQUESTID, PLACEHOLDER_ACSURL);		
+			List<Assertion> assertionsPersistent = response2.getAssertions();
 			for (Assertion assertion : assertionsPersistent){
-				// change nameid to persistent format
-				assertion.getSubject().getNameID().setFormat(NameID.PERSISTENT);
+				// set nameid to persistent format
+				NameID nameid = (NameID) Configuration.getBuilderFactory().getBuilder(NameID.DEFAULT_ELEMENT_NAME).buildObject(NameID.DEFAULT_ELEMENT_NAME);
+				nameid.setValue("_"+UUID.randomUUID().toString());
+				nameid.setFormat(NameID.PERSISTENT);
+				assertion.getSubject().setNameID(nameid);
+
+				// add the attributes
+				addTargetSPAttributes(assertion);
+				SAMLUtil.sign(assertion, getX509Credentials(null));
 			}
-			// add the InReplyTo attribute to the Response as well
-			response.setInResponseTo(requestID);
+			// add Destination attribute (mandatory for signed Responses) 
+			// with a placeholder for the ACS URL which is the intended value
+			response2.setDestination(PLACEHOLDER_ACSURL);
 			// convert the Response to a string
-			String responsePersistent = SAMLUtil.toXML(response);
+			String responsePersistent = SAMLUtil.toXML(response2);
+			// store the response in the test runner so the mock IdP can use it
+			SPTestRunner.getInstance().setSamlResponse(responsePersistent);
 			
 			/**
 			 * Complete this second login attempt
 			 */
-			Boolean loginPersistent = SPTestRunner.getInstance().completeLoginAttempt(browser, acs, responsePersistent);
-			
+			Boolean loginPersistent = SPTestRunner.getInstance().attemptLogin(browser, true);
+			SPTestRunner.getInstance().setSamlResponse(null);
+
 			/**
 			 * Check the results of the login attempts
 			 */
@@ -526,15 +527,11 @@ public class SAML2Int extends SPTestSuite {
 		public boolean checkLogin() {
 			// get a browser to test in
 			WebClient browser = SPTestRunner.getInstance().getNewBrowser();
-			/**
-			 * Initiate the login attempt
-			 */
-			Node acs = SPTestRunner.getInstance().initiateLoginAttempt(browser, false);
 			
 			/**
 			 * Create the Response we wish the mock IdP to return
 			 */
-			Response response = createMinimalWebSSOResponse(null);
+			Response response = createMinimalWebSSOResponse(null, null);
 			// add attributes and sign the assertions in the response
 			List<Assertion> assertions = response.getAssertions();
 			for (Assertion assertion : assertions){
@@ -548,12 +545,16 @@ public class SAML2Int extends SPTestSuite {
 				addTargetSPAttributes(assertion);
 				SAMLUtil.sign(assertion, getX509Credentials(null));
 			}
+			// add Destination attribute (mandatory for signed Responses) 
+			// with a placeholder for the ACS URL which is the intended value
+			response.setDestination(PLACEHOLDER_ACSURL);
 			String responseIdPInitiated = SAMLUtil.toXML(response);
+			SPTestRunner.getInstance().setSamlResponse(responseIdPInitiated);
 			
 			/**
-			 * Complete the login attempt
+			 * Attempt to log in
 			 */
-			Boolean loginIdPInitiated = SPTestRunner.getInstance().completeLoginAttempt(browser, acs, responseIdPInitiated);
+			Boolean loginIdPInitiated = SPTestRunner.getInstance().attemptLogin(browser, false);
 			
 			/**
 			 * Check the result of the login attempt

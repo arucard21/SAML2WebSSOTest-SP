@@ -45,7 +45,6 @@ import org.opensaml.saml2.core.Subject;
 import org.opensaml.saml2.core.SubjectConfirmation;
 import org.opensaml.saml2.core.SubjectConfirmationData;
 import org.opensaml.saml2.core.impl.AttributeBuilder;
-import org.opensaml.saml2.metadata.AssertionConsumerService;
 import org.opensaml.saml2.metadata.EntityDescriptor;
 import org.opensaml.saml2.metadata.IDPSSODescriptor;
 import org.opensaml.saml2.metadata.KeyDescriptor;
@@ -87,6 +86,19 @@ import saml2webssotest.sp.SPTestRunner;
  * @author: Riaas Mokiem
  */
 public abstract class SPTestSuite implements TestSuite {
+	/**
+	 * Placeholders for indicating certain values in SAML Responses that are not yet available
+	 * These should match the regex matching strings in SamlWebSSOHandler.
+	 */
+	public static final String PLACEHOLDER_REQUESTID = "[[requestID]]";
+	public static final String PLACEHOLDER_ACSURL = "[[acsURL]]";
+	/**
+	 *  regex matching strings for replacing the placeholders in a SAML Response
+	 *  These should match the placeholder variables in SPTestSuite
+	 */
+	public static final String REGEX_REQUESTID = "\\[\\[requestID\\]\\]";
+	public static final String REGEX_ACSURL = "\\[\\[acsURL\\]\\]";
+	
 	/**
 	 * Logger for this class
 	 */
@@ -158,13 +170,7 @@ public abstract class SPTestSuite implements TestSuite {
 		return SAMLUtil.toXML(ed);
 	}
 
-	/**
-	 * Retrieve the X.509 Certificate that should be used by the mock IdP.
-	 * 
-	 * @param certLocation contains the location of the certificate file that should be used (e.g. "keys/mycert.pem")
-	 * 			Can be null or empty, in which case a default certificate is used
-	 * @return: the X.509 Certificate credentials
-	 */
+	@Override
 	public X509Credential getX509Credentials(String certLocation){
 		BasicX509Credential credentials = new BasicX509Credential();
 		String cert = "";
@@ -216,7 +222,7 @@ public abstract class SPTestSuite implements TestSuite {
 		else{
 			credentials.setEntityCertificate(idpCert);
 			credentials.setPublicKey(idpCert.getPublicKey());
-			credentials.setPrivateKey(getIdPPrivateKey(certLocation));
+			credentials.setPrivateKey(getMockServerPrivateKey(certLocation));
 			
 			return credentials;
 		}
@@ -229,7 +235,7 @@ public abstract class SPTestSuite implements TestSuite {
      * 			Can be null or empty, in which case a default private key is used 
      * @return: the RSA private key in PEM format
      */
-	private RSAPrivateKey getIdPPrivateKey(String keyLocation){
+	private RSAPrivateKey getMockServerPrivateKey(String keyLocation){
 		RSAPrivateKey privateKey = null;
 		String key = "";
 		
@@ -294,15 +300,20 @@ public abstract class SPTestSuite implements TestSuite {
 	 * - set the AudienceRestriction to the SP Entity ID
 	 * - use the Password authentication context
 	 * - set all IssueInstant attributes to the current date and time
-	 * - set the Recipient to the default ACS from the SP metadata
+	 * - set the Recipient to the provided ACS URL or, if IdP-initiated, the default ACS URL from the target SP metadata 
 	 * - if requestID is provided, the InResponseTo attribute is set on SubjectConfirmationData and Response
 	 * 
 	 * You can edit the Response as you see fit to customize it to your needs
 	 * 
-	 * @param requestID is the ID of the AuthnRequest that the response is intended to answer, it should be null if the response is IdP-initiated.
-	 * @return the minimal SAML Response
+	 * @param requestID is the ID of the AuthnRequest that the response is intended 
+	 * to answer, it should be null if the response is IdP-initiated.
+	 * @param acsURL is the URL of the AssertionConsumerService which is intended 
+	 * to be the Recipient of the Assertion in the Response, or null if 
+	 * IdP-initiated in which case the default ACS URL will be selected from the
+	 * target SP's metadata
+	 * @return the minimal SAML Response required for the Web Browser SSO profile
 	 */
-	public Response createMinimalWebSSOResponse(String requestID){
+	public Response createMinimalWebSSOResponse(String requestID, String acsURL){
 		try {
 			DefaultBootstrap.bootstrap();
 		} catch (ConfigurationException e) {
@@ -317,7 +328,7 @@ public abstract class SPTestSuite implements TestSuite {
 		statuscode.setValue(StatusCode.SUCCESS_URI);
 		status.setStatusCode(statuscode);
 		// create the assertion
-		Assertion assertion = createMinimalAssertion(requestID);
+		Assertion assertion = createMinimalAssertion(requestID, acsURL);
 		// add created elements to Response
 		response.setID("_"+UUID.randomUUID().toString());
 		response.setIssueInstant(DateTime.now());
@@ -329,7 +340,7 @@ public abstract class SPTestSuite implements TestSuite {
 		return response;
 	}
 	
-	public Assertion createMinimalAssertion(String requestID){
+	public Assertion createMinimalAssertion(String requestID, String acsURL){
 		SPConfiguration sp = SPTestRunner.getInstance().getSPConfig();
 		try {
 			DefaultBootstrap.bootstrap();
@@ -352,7 +363,13 @@ public abstract class SPTestSuite implements TestSuite {
 		// create Issuer for Assertion 
 		issuer.setValue(getmockIdPEntityID());
 		// create Subject for Assertion
-		subjectconfdata.setRecipient(sp.getApplicableACS(null).getAttributes().getNamedItem(AssertionConsumerService.LOCATION_ATTRIB_NAME).getNodeValue());
+		if (acsURL == null){
+			// use default ACS URL for IdP-initiated Responses
+			subjectconfdata.setRecipient(sp.getApplicableACS(null).getValue());
+		}
+		else{
+			subjectconfdata.setRecipient(acsURL);
+		}
 		subjectconfdata.setNotOnOrAfter(DateTime.now().plusMinutes(5));
 		if (requestID != null){
 			subjectconfdata.setInResponseTo(requestID);
