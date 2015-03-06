@@ -980,7 +980,7 @@ public class SAMLProf_WebSSO extends SPTestSuite {
 	
 		@Override
 		public boolean isMandatory() {
-			return true;
+			return false;
 		}
 
 		@Override
