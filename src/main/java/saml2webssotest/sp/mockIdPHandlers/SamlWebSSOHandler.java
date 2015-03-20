@@ -58,6 +58,8 @@ public class SamlWebSSOHandler extends AbstractHandler{
 		method = request.getMethod();
 		samlRequest = null;
 		applicableACS = null;
+		String relayState = "";
+		String signature = "";
 
         if (method.equalsIgnoreCase("GET")) {
             // retrieve the SAML Request and binding
@@ -69,6 +71,16 @@ public class SamlWebSSOHandler extends AbstractHandler{
                 SPTestRunner.getInstance().setSamlRequest(samlRequest);
                 applicableACS = SPTestRunner.getInstance().getSPConfig().getApplicableACS(SAMLUtil.fromXML(samlRequest));
                 requestID = SAMLUtil.getSamlMessageID(samlRequest);
+                
+                // retrieve the RelayState, if provided (this will always be either a GET or POST variable called RelayState)
+                relayState = request.getParameter(StandardNames.URLPARAM_RELAYSTATE);
+                if(relayState != null && !relayState.isEmpty()){
+                	signature = request.getParameter(StandardNames.URLPARAM_SIGNATURE);
+                	// check if the signature was provided
+                		if(signature == null){
+                		logger.error("SAMLBind warning (Section 3.4.3, lines 545-547) - The target SP has provided a RelayState parameter, but has not provided a Signature that protects the integrity of the RelayState parameter");
+                	}
+                }
 
                 logger.debug("SAML Request received through GET by the mock IdP");
             }
@@ -92,6 +104,9 @@ public class SamlWebSSOHandler extends AbstractHandler{
             	SPTestRunner.getInstance().setSamlRequest(samlRequest);
             	applicableACS = SPTestRunner.getInstance().getSPConfig().getApplicableACS(SAMLUtil.fromXML(samlRequest));
             	requestID = SAMLUtil.getSamlMessageID(samlRequest);
+            	
+            	 // retrieve the RelayState, if provided (this will always be either a GET or POST variable called RelayState)
+                relayState = request.getParameter(StandardNames.URLPARAM_RELAYSTATE);
 
             	logger.debug("SAML Request received through POST by the mock IdP");
             		
@@ -194,15 +209,13 @@ public class SamlWebSSOHandler extends AbstractHandler{
     		request.setHandled(true);
         }
         else{
-        	String relayStateInput = "";
-        	// retrieve the RelayState, if provided (this will always be either a GET or POST variable called RelayState)
-        	String relaystate = request.getParameter(StandardNames.URLPARAM_RELAYSTATE);
-        	if(relaystate != null && !relaystate.isEmpty()){
+        	String relayStateFormInput = "";
+        	if(relayState != null && !relayState.isEmpty()){
         		// create the form input element that will be used to return the RelayState to the target SP
-        		relayStateInput = "<input type=\"hidden\" name=\""+StandardNames.URLPARAM_RELAYSTATE+"\" value=\""+relaystate+"\"/>";
+        		relayStateFormInput = "<input type=\"hidden\" name=\""+StandardNames.URLPARAM_RELAYSTATE+"\" value=\""+relayState+"\"/>";
         		// Make sure the RelayState does not exceed 80 bytes in size
-        		if (relaystate.getBytes().length > 80 ){
-        			logger.error("SAMLBind violation (Section 3.4.3, lines 545-547) - The target SP has provided a RelayState paramater which exceeds 80 bytes in size, instead its size (in bytes) is "+ relaystate.getBytes().length);
+        		if (relayState.getBytes().length > 80 ){
+        			logger.error("SAMLBind violation (Section 3.4.3, lines 545-547) - The target SP has provided a RelayState parameter which exceeds 80 bytes in size, its size (in bytes) is "+ relayState.getBytes().length);
         		}
         	}
         	// get the SAML Response that should be sent and replace any request variables (e.g. [[requestID]])  that have been placed in it
@@ -218,7 +231,7 @@ public class SamlWebSSOHandler extends AbstractHandler{
         	String responsePage = "<html>"
         			+ "<body onLoad=\"document.sendSAMLResponse.submit()\">"
         			+ "<form action=\""+applicableACS.getName()+"\" method=\"post\" name=\"sendSAMLResponse\">"
-        			+ relayStateInput
+        			+ relayStateFormInput
         			+ "<input type=\"hidden\" name=\""+StandardNames.URLPARAM_SAMLRESPONSE_POST+"\" value=\""+SAMLUtil.encodeSamlMessageForPost(samlResponse)+"\"/>"
         			+ "</form>"
         			+ "</body>"
