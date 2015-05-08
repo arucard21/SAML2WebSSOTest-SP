@@ -305,6 +305,10 @@ public abstract class SPTestSuite implements TestSuite {
 	 * 
 	 * You can edit the Response as you see fit to customize it to your needs
 	 * 
+	 * THe request ID and acsURL can be set to placeholder values so they can be 
+	 * replaced with their correct values from the AuthnRequest when the Response
+	 * is sent. This is available in PLACEHOLDER_REQUESTID or PLACEHOLDER_ACSURL.
+	 * 
 	 * @param requestID is the ID of the AuthnRequest that the response is intended 
 	 * to answer, it should be null if the response is IdP-initiated.
 	 * @param acsURL is the URL of the AssertionConsumerService which is intended 

@@ -110,6 +110,7 @@ public class SPTestRunner extends TestRunner {
 			Options options = new Options();
 			options.addOption("h", "help", false, "Print this help message");
 			options.addOption("c", "config", true,"The name of the properties file containing the configuration of the target SAML entity");
+			options.addOption("e", "showEmbedded", false, "Show test results for tests that are performed within the testing framework");
 			options.addOption("l", "listTestcases", false,"List all the test cases");
 			options.addOption("L", "listTestsuites", false,"List all the test suites");
 			options.addOption("m", "metadata", false,"Display the mock SAML entity's metadata");
@@ -158,6 +159,14 @@ public class SPTestRunner extends TestRunner {
 					}
 					else{
 						recursive = false;
+					}
+					
+					// store setting for showing embedded test results
+					if (command.hasOption("showEmbedded")){
+						showEmbedded = true;
+					}
+					else{
+						showEmbedded = false;
 					}
 
 					// load target SP config
