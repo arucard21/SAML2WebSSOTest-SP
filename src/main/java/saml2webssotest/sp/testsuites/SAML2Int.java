@@ -71,6 +71,7 @@ public class SAML2Int extends SPTestSuite {
 	public List<TestSuite> getDependencies() {
 		ArrayList<TestSuite> dependencies = new ArrayList<TestSuite>();
 		dependencies.add(new SAMLProf_WebSSO());
+		dependencies.add(new SAMLBind());
 		return dependencies;
 	}
 
