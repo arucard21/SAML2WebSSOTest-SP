@@ -27,7 +27,7 @@ public class SAMLBind extends SPTestSuite {
 	}
 
 	/**
-	 * Tests the following part of the following part of the SAMLBind Profile: 
+	 * Tests the following part of the following part of the SAMLBind Profile (POST binding): 
 	 * 		If the message is signed, the Destination XML attribute in the root SAML element of the protocol
 	 * 		message MUST contain the URL to which the sender has instructed the user agent to deliver the
 	 * 		message. The recipient MUST then verify that the value matches the location at which the message has
@@ -35,12 +35,12 @@ public class SAMLBind extends SPTestSuite {
 	 * 
 	 * @author RiaasM
 	 */
-	public class LoginSignedResponseNoDestination implements LoginTestCase{
+	public class LoginPOSTSignedResponseNoDestination implements LoginTestCase{
 		private String resultMessage;
 
 		@Override
 		public String getDescription() {
-			return "Test if the Service Provider verifies the value of the Destination attribute on signed Responses";
+			return "Test if the Service Provider verifies the value of the Destination attribute on signed Responses over the POST binding";
 		}
 
 		@Override
@@ -78,10 +78,10 @@ public class SAMLBind extends SPTestSuite {
 				return false;
 			}
 			else if (!loginValidDestination) {
-				resultMessage = "The Service Provider did not allow login with a valid InResponseTo attribute in the Response message";
+				resultMessage = "The Service Provider did not allow login with a valid Destination attribute in the Response message";
 				return false;
 			}
-			logger.debug("The Service Provider allowed login with a valid InResponseTo attribute in the Response message");
+			logger.debug("The Service Provider allowed login with a valid Destination attribute in the Response message");
 
 			/**
 			 * Check if the target SP rejects a login attempt when the Destination attribute is invalid
