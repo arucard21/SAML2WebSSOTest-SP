@@ -615,11 +615,14 @@ public class SAMLProf_WebSSO extends SPTestSuite {
 	 * 	allowable clock skew between the providers
 	 * 
 	 * Tested by trying to log in to the target SP with:
-	 * 	- A Response that has a valid NotOnOrAfter time (5 minutes)
+	 * 	- A Response that has a valid NotOnOrAfter time (4 times the clock skew + 1 second)
 	 * 		- This should log in correctly
 	 * 	- a Response that has a NotOnOrAfter time set to now. We also wait for the allowable clock skew to no longer 
 	 * 	be able to affect the validity of the Response
 	 * 		- This should fail to log in
+	 * 	- A Response that has a valid NotOnOrAfter time (4 times the clock skew + 1 second) but wait till the last
+	 * second to actually log in
+	 * 		- This should log in correctly
 	 * 
 	 * @author RiaasM
 	 */
@@ -654,10 +657,18 @@ public class SAMLProf_WebSSO extends SPTestSuite {
 			/**
 			 * Check if the target SP allows a login attempt if the NotOnOrAfter time is valid
 			 */
+			// retrieve the clock skew for the target SP so the validity period can be set to a value 
+			// related to the uncertainty in communication that the clock skew indicates
+			int clockskewMS = SPTestRunner.getInstance().getSPConfig().getClockSkew();
 
 			response = createMinimalWebSSOResponse(PLACEHOLDER_REQUESTID, PLACEHOLDER_ACSURL);
 			assertions = response.getAssertions();
 			assertion = assertions.get(0);
+			subConfs = assertion.getSubject().getSubjectConfirmations();
+			for (SubjectConfirmation subConf : subConfs) {
+				// set the validity period to 4 times the clock skew plus 1 second
+				subConf.getSubjectConfirmationData().setNotOnOrAfter(DateTime.now().plusMillis(4 * clockskewMS + 1000));
+			}
 			addTargetSPAttributes(assertion);
 			SAMLUtil.sign(assertion, getX509Credentials(null));
 			SPTestRunner.getInstance().setSamlResponse(SAMLUtil.toXML(response));
@@ -697,25 +708,63 @@ public class SAMLProf_WebSSO extends SPTestSuite {
 			// wait for the same amount of time as the clock skew on the target SP to make sure
 			// the Response can't be made valid due to that clock skew (and a second longer, just to make sure)
 			try {
-				Thread.sleep(SPTestRunner.getInstance().getSPConfig().getClockSkew()+1000);
+				Thread.sleep(clockskewMS+1000);
 			} catch (InterruptedException e) {
 				resultMessage = "The wait time intended to keep the clock skew from incorrectly causing the Response to be valid, was interrupted";
 				return false;
 			}
 			SPTestRunner.getInstance().setSamlResponse(SAMLUtil.toXML(response));
 			Boolean loginInvalidNOOA = SPTestRunner.getInstance().attemptLogin(browser, true);
-
+			
 			if (loginInvalidNOOA == null) {
-				resultMessage = "The login attempt could not be completed";
+				resultMessage = "The invalid login attempt could not be completed";
 				return false;
 			}
-			if (loginInvalidNOOA) {
+			else if (loginInvalidNOOA) {
 				resultMessage = "The Service Provider did not verify that the NotOnOrAfter time has not passed";
 				return false;
-			} else {
-				resultMessage = "The Service Provider correctly verified that the NotOnOrAfter time has not passed";
-				return true;
 			}
+			
+			browser = SPTestRunner.getInstance().getNewBrowser();
+			response = null;
+			assertions = null;
+			assertion = null;
+			subConfs = null;
+			
+			response = createMinimalWebSSOResponse(PLACEHOLDER_REQUESTID, PLACEHOLDER_ACSURL);
+			assertions = response.getAssertions();
+			assertion = assertions.get(0);
+			subConfs = assertion.getSubject().getSubjectConfirmations();
+			for (SubjectConfirmation subConf : subConfs) {
+				// set the validity period to 4 times the clock skew plus 1 second
+				subConf.getSubjectConfirmationData().setNotOnOrAfter(DateTime.now().plusMillis(4 * clockskewMS + 1000));
+			}
+			addTargetSPAttributes(assertion);
+			SAMLUtil.sign(assertion, getX509Credentials(null));
+			// wait for a long period of time before using the Response to make sure that long validity periods are 
+			// still seen as valid
+			try {
+				Thread.sleep(3 * clockskewMS);
+			} catch (InterruptedException e) {
+				resultMessage = "The wait time intended to keep the clock skew from incorrectly causing the Response to be valid, was interrupted";
+				return false;
+			}
+			SPTestRunner.getInstance().setSamlResponse(SAMLUtil.toXML(response));
+			Boolean loginLongNOOA = SPTestRunner.getInstance().attemptLogin(browser, true);
+
+			if (loginLongNOOA == null) {
+				resultMessage = "The long login attempt could not be completed";
+				return false;
+			}
+			else if (!loginLongNOOA) {
+				resultMessage = "The Service Provider did not allow long validity periods for the NotOnOrAfter time";
+				return false;
+			}
+			
+			// all parts of the test have passed so this test case has passed
+			resultMessage = "The Service Provider correctly verified that the NotOnOrAfter time has not passed";
+			return true;
+			
 		}
 	}
 
