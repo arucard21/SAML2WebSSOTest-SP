@@ -1,4 +1,6 @@
 # SAML2WebSSOTest-SP
+**DEPRECATED: This has been moved to https://github.com/arucard21/SAML2WebSSOTest as a sub-project**
+
 Framework for automated testing of SAML 2.0 SP entities, written in Java.
 
 # Description
